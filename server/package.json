@@ -1,0 +1,22 @@
+{
+  "name": "custom-software---hemant-sharma-",
+  "version": "1.0.0",
+  "description": "A custom software based on a business logic",
+  "license": "ISC",
+  "author": "Subhankar Sharma",
+  "type": "commonjs",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon src/app.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "mongoose": "^9.1.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
