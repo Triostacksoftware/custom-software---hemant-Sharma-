@@ -3,7 +3,7 @@ const bcrypt = require("bcrypt");
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
-
+//method for creating a new user
 const createUser = async ({ name, phoneNumber, password }) => {
 
     //check if user already exists
@@ -21,7 +21,6 @@ const createUser = async ({ name, phoneNumber, password }) => {
         password: hashedPassword
     });
 };
-
 
 
 
