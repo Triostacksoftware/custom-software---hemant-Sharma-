@@ -8,7 +8,7 @@ const userModel = require("./models/user.js");
 const employeeModel = require("./models/employee.js");
 
 const userRoutes = require("./routes/user.js");
-
+const employeeRoutes = require("./routes/employee.js");
 
 const app = express();
 
@@ -16,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use(userRoutes);
+app.use(employeeRoutes);
 
 mongoose.connect(process.env.DATABASE_CONNECTION_STRING)
     .then(() => {
