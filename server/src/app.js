@@ -5,6 +5,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 
 const userModel = require("./models/user.js");
+const employeeModel = require("./models/employee.js");
 
 const userRoutes = require("./routes/user.js");
 

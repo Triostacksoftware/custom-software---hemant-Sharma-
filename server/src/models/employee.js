@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 const PHONE_REGEX = /^\+?[1-9]\d{1,14}$/;
 
-const userSchema = new Schema({
+const employeeSchema = new Schema({
     name: {
         type: String,
         required: [true, "Name is required"],
@@ -24,5 +24,5 @@ const userSchema = new Schema({
     }
 }, { timestamps: true });
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model("Employee", employeeSchema);
 
