@@ -3,6 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
+import YourPools from "./pages/YourPools";
 
 const App = () => {
   return (
@@ -15,6 +16,15 @@ const App = () => {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route 
+          path="/pools/joined"
+          element={
+            <ProtectedRoute>
+              <YourPools />
             </ProtectedRoute>
           }
         />

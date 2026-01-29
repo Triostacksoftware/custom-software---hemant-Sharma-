@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Home, CircleDot, Plus, BarChart3, Settings, User, Menu, X, Target } from 'lucide-react'
+import { Home, Settings, User, Menu, X, Target, PenSquare } from 'lucide-react'
 
 const SideBar = () => {
   const navigate = useNavigate()
@@ -10,6 +10,7 @@ const SideBar = () => {
   const navItems = [
     { icon: Home, path: '/', label: 'Home' },
     { icon: Settings, path: '/settings', label: 'Settings' },
+    { icon: PenSquare, path: '/pools/joined', label: 'Your Pools' },
   ]
 
   return (
