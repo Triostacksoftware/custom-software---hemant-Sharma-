@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+@font-face {
+    font-family: 'sans';
+    src: url('/assets/fonts/InstrumentSans-Regular.ttf');
+}
+
+@font-face {
+    font-family: 'serif';
+    src: url('/assets/fonts/InstrumentSerif-Regular.ttf');
+}
+
+@theme{
+    --font-sans: "sans";
+    --font-serif: "serif";
+    --color-darkBG: #111;
+}
