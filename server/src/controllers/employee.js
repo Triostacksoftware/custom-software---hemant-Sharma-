@@ -27,10 +27,11 @@ exports.employeeSignup = async (req, res, next) => {
         await Employee.create({
             name,
             phoneNumber,
-            password: hashedPassword
+            password: hashedPassword,
+            approvalStatus: "PENDING"
         });
 
-        res.status(201).json({ message: "Employee created successfully", success: true });
+        res.status(201).json({ message: "Signup successful. Awaiting admin approval", success: true });
 
     } catch (error) {
 
@@ -63,6 +64,10 @@ exports.employeeLogin = async (req, res, next) => {
         const employee = await Employee.findOne({ phoneNumber });
         if (!employee) {
             return res.status(409).json({ error: "Employee does not exist" });
+        }
+
+        if (employee.approvalStatus !== "APPROVED") {
+            return res.status(403).json({ error: "Awaiting approval from admin" });
         }
 
         const passwordMatch = await bcrypt.compare(password, employee.password);  //compare the password

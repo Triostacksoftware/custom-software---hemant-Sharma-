@@ -1,8 +1,9 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
-const userService = require("../services/user.js");
 const User = require("../models/user.js");
+
+const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
 
 //controller function to register a new user
@@ -16,15 +17,25 @@ exports.userSignup = async (req, res, next) => {
             return res.status(400).json({ error: "All fields are required" });
         }
 
-        await userService.createUser({ name, phoneNumber, password });
+        //check if user already exists
+        if (await User.exists({ phoneNumber })) {
+            return res.status(409).json({ error: "User already exists" });
+        }
 
-        res.status(201).json({ message: "User created successfully", success: true });
+        //hash password
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+        //create user
+        await User.create({
+            name,
+            phoneNumber,
+            password: hashedPassword,
+            approvalStatus: "PENDING"
+        });
+
+        res.status(201).json({ message: "User creation successful. Awaiting admin approval", success: true });
 
     } catch (error) {
-        if (error.message === "USER_ALREADY_EXISTS") {
-            return res.status(409).json({ error: "User already exists" });
-
-        }
         console.log("User creation error: ", error);
         res.status(500).json({ error: "Internal server error" });
     }
@@ -54,6 +65,10 @@ exports.userLogin = async (req, res, next) => {
         const user = await User.findOne({ phoneNumber });
         if (!user) {
             return res.status(409).json({ error: "User does not exist" });
+        }
+
+        if (user.approvalStatus !== "APPROVED") {
+            return res.status(403).json({ error: "Awaiting admin approval" });
         }
 
         const passwordMatch = await bcrypt.compare(password, user.password);  //compare the password
