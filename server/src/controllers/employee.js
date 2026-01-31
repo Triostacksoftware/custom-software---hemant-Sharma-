@@ -44,7 +44,7 @@ exports.employeeSignup = async (req, res, next) => {
 //create login token using jwt
 function generateAccessToken(id, name) {
     return jwt.sign(
-        { userId: id, name: name },
+        { employeeId: id, name: name },
         process.env.JWT_SECRET,
         { expiresIn: "3h" }
     );

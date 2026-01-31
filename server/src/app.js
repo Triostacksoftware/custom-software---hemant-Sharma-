@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 
 const userModel = require("./models/user.js");
 const employeeModel = require("./models/employee.js");
+const groupModel = require("./models/group.js");
 
 const userRoutes = require("./routes/user.js");
 const employeeRoutes = require("./routes/employee.js");

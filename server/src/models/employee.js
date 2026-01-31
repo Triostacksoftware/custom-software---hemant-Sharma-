@@ -27,6 +27,12 @@ const employeeSchema = new Schema({
         type: String,
         enum: ["PENDING", "APPROVED", "REJECTED"],
         default: "PENDING"
+    },
+
+    role: {
+        type: String,
+        enum: ["EMPLOYEE", "ADMIN"],
+        default: "EMPLOYEE"
     }
 }, { timestamps: true });
 
