@@ -2,17 +2,14 @@ import React, { useState } from 'react'
 import SideBar from '../components/SideBar.tsx'
 import PoolCard from '../components/dash/PoolCard.tsx'
 import { useNavigate } from 'react-router-dom'
-
-export const data = {
-  pools: [
-    {id:1, name: "Delhi Rally", minBet: 1000000, maxBet: 100000000000000, currentMembers: 50, maxMembers: 90},
-    {id:2, name: "Casual Play", minBet: 100, maxBet: 500, currentMembers: 4, maxMembers: 8},
-  ]
-}
+import { usePools } from '../context/PoolsProvider.tsx'
 
 const YourPools = () => {
-  const [pools, setPools] = useState(data.pools);
-  const [currentPool, setCurrentPool] = useState(data.pools[0]);
+
+  const data = usePools()?.userPools;
+
+  const [pools, setPools] = useState(data);
+  const [currentPool, setCurrentPool] = useState(data[0]);
   const [detailsModalShown, setDetailsModalShown] = useState(false);
   const [leaveModal, setLeaveModal] = useState([false, {}]);
 
@@ -66,6 +63,7 @@ const YourPools = () => {
                 isDiscover={false}
                 onViewDetails={() => handleViewDetails(pool)}
                 onLeave={() => handleLeavePool(pool)}
+                onClick={() => {navigate(`/pools/${pool.id}`)}}
               />
             ))}
           </div>

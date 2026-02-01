@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Home, Settings, User, Menu, X, Target, PenSquare } from 'lucide-react'
+import { Home, Settings, User, Menu, X, Target, PenSquare, LogOut } from 'lucide-react'
 
 const SideBar = () => {
   const navigate = useNavigate()
@@ -67,8 +67,12 @@ const SideBar = () => {
 
         <div className='flex-grow' />
 
-        <button className='w-12 h-12 bg-zinc-800 hover:bg-zinc-700 rounded-xl flex items-center justify-center transition-colors duration-200'>
-          <User size={20} className='text-zinc-400 hover:text-white transition-colors' />
+        <button className='w-12 h-12 bg-red-800 hover:bg-red-700 rounded-xl flex items-center justify-center transition-colors duration-200' onClick={()=>{
+          localStorage.removeItem('authToken');
+          navigate('/auth', { replace: true });
+          window.location.reload();
+        }}>
+          <LogOut size={20} className='text-zinc-400 hover:text-white transition-colors' />
         </button>
       </div>
     </>

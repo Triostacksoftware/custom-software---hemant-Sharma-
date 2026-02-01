@@ -4,6 +4,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import YourPools from "./pages/YourPools";
+import Pool from "./pages/Pool";
 
 const App = () => {
   return (
@@ -27,6 +28,15 @@ const App = () => {
               <YourPools />
             </ProtectedRoute>
           }
+        />
+
+        <Route 
+          element={
+            <ProtectedRoute>
+              <Pool />
+            </ProtectedRoute>
+          }
+          path="/pools/:poolId"
         />
       </Routes>
     </main>
