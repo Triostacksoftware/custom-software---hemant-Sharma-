@@ -2,34 +2,106 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserContext } from "../context/UserContext";
 
-const TextInputField = ({
-  val,
-  setVal,
-  placeholder,
-  password,
-}: {
-  val: string;
-  setVal: (v: string) => void;
-  placeholder: string;
-  password?: boolean;
-}) => {
-  return (
-    <input
-      type={password ? "password" : "text"}
-      value={val}
-      onChange={(e) => setVal(e.target.value)}
-      placeholder={placeholder}
-      className="w-full bg-[#2A2A2A] p-3 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-    />
-  );
+/* ---------- MOCK BACKEND ---------- */
+type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+interface MockEmployee {
+  name: string;
+  phoneNumber: string;
+  password: string;
+  approvalStatus: ApprovalStatus;
+}
+
+const mockEmployeeDB: MockEmployee[] = [
+  {
+    name: "Approved Employee",
+    phoneNumber: "+911234567890",
+    password: "password123",
+    approvalStatus: "APPROVED",
+  },
+  {
+    name: "Pending Employee",
+    phoneNumber: "+919999999999",
+    password: "password123",
+    approvalStatus: "PENDING",
+  },
+  {
+    name: "Rejected Employee",
+    phoneNumber: "+918888888888",
+    password: "password123",
+    approvalStatus: "REJECTED",
+  },
+];
+
+
+const mockEmployeeSignup = (
+  name: string,
+  phoneNumber: string,
+  password: string
+) => {
+  const exists = mockEmployeeDB.find(e => e.phoneNumber === phoneNumber);
+  if (exists) {
+    throw new Error("Employee already exists");
+  }
+
+  mockEmployeeDB.push({
+    name,
+    phoneNumber,
+    password,
+    approvalStatus: "PENDING",
+  });
+
+  return {
+    success: true,
+    message: "Signup successful. Awaiting admin approval",
+  };
 };
 
+const mockEmployeeLogin = (phoneNumber: string, password: string) => {
+  const employee = mockEmployeeDB.find(e => e.phoneNumber === phoneNumber);
+
+  if (!employee) {
+    throw new Error("Employee does not exist");
+  }
+
+  if (employee.approvalStatus === "REJECTED") {
+    throw new Error("Your request was rejected by admin");
+  }
+
+  if (employee.approvalStatus !== "APPROVED") {
+    throw new Error("Awaiting admin approval");
+  }
+
+  if (employee.password !== password) {
+    throw new Error("Incorrect password");
+  }
+
+  return {
+    success: true,
+    token: `mock-jwt-employee-${Date.now()}`,
+  };
+};
+
+type Mode = "USER" | "EMPLOYEE";
+
+const TextInput = ({ value, onChange, placeholder, type = "text" }: any) => (
+  <input
+    type={type}
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    placeholder={placeholder}
+    className="w-full bg-[#2A2A2A] p-3 rounded-md text-white"
+  />
+);
+
 const AuthForm = () => {
+  const [mode, setMode] = useState<Mode>("USER");
+  const [isLogin, setIsLogin] = useState(true);
+
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
 
-  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -43,86 +115,118 @@ const AuthForm = () => {
     setLoading(true);
 
     setTimeout(() => {
-      if (!phoneNumber || !password || (!isLogin && !name)) {
-        setError("All fields are required");
+      try {
+        if (!phoneNumber || !password || (!isLogin && mode === "EMPLOYEE" && !name)) {
+          throw new Error("All fields are required");
+        }
+
+        // USER LOGIN (mock)
+        if (mode === "USER") {
+          login("mock-user-token", "user");
+          navigate("/");
+          return;
+        }
+
+        // EMPLOYEE SIGNUP
+        if (!isLogin) {
+          const res = mockEmployeeSignup(name, phoneNumber, password);
+          setSuccess(res.message);
+          setIsLogin(true);
+          return;
+        }
+
+        // EMPLOYEE LOGIN
+        const res = mockEmployeeLogin(phoneNumber, password);
+        login(res.token, "employee");
+        navigate("/employee");
+
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      if (isLogin) {
-        const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mocktoken123";
-        login(token);
-        navigate("/", { replace: true });
-      } else {
-        setSuccess("Account created successfully. Please login.");
-        setIsLogin(true);
-      }
-
-      setName("");
-      setPhoneNumber("");
-      setPassword("");
-      setLoading(false);
-    }, 800);
+    }, 700); // simulate network delay
   };
 
   return (
-    <div className="bg-[#3C3C3C] w-84 rounded-md flex flex-col gap-5 pb-7">
-      <h2 className="text-4xl font-semibold text-center py-4 border-b border-white/10">
-        {isLogin ? "Sign In" : "Create Account"}
+    <div className="bg-[#3C3C3C] w-full max-w-md rounded-md p-6 flex flex-col gap-5">
+      <h2 className="text-2xl font-semibold text-center">
+        {mode === "USER" ? "User Auth" : "Employee Auth"}
       </h2>
 
-      {error && <div className="px-3 text-red-300 text-sm">{error}</div>}
-      {success && <div className="px-3 text-green-300 text-sm">{success}</div>}
-
-      <div className="p-3 flex flex-col gap-4">
-        {!isLogin && (
-          <TextInputField val={name} setVal={setName} placeholder="Full Name" />
-        )}
-
-        <TextInputField
-          val={phoneNumber}
-          setVal={setPhoneNumber}
-          placeholder="Phone Number"
-        />
-        <TextInputField
-          val={password}
-          setVal={setPassword}
-          placeholder="Password"
-          password
-        />
-
+      {/* MODE SWITCH */}
+      <div className="flex gap-2">
         <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="bg-darkBG p-3 rounded-md text-lg disabled:opacity-50"
+          onClick={() => setMode("USER")}
+          className={`flex-1 p-2 rounded ${
+            mode === "USER" ? "bg-black" : "bg-zinc-700"
+          }`}
         >
-          {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
+          User
+        </button>
+        <button
+          onClick={() => setMode("EMPLOYEE")}
+          className={`flex-1 p-2 rounded ${
+            mode === "EMPLOYEE" ? "bg-black" : "bg-zinc-700"
+          }`}
+        >
+          Employee
         </button>
       </div>
 
-      <p className="text-center text-sm">
-        {isLogin ? (
-          <>
-            No account?{" "}
-            <span
-              className="underline cursor-pointer"
-              onClick={() => setIsLogin(false)}
-            >
-              Create one
-            </span>
-          </>
-        ) : (
-          <>
-            Already have an account?{" "}
-            <span
-              className="underline cursor-pointer"
-              onClick={() => setIsLogin(true)}
-            >
-              Login
-            </span>
-          </>
-        )}
-      </p>
+      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {success && <p className="text-green-400 text-sm">{success}</p>}
+
+      {!isLogin && mode === "EMPLOYEE" && (
+        <TextInput value={name} onChange={setName} placeholder="Full Name" />
+      )}
+
+      <TextInput
+        value={phoneNumber}
+        onChange={setPhoneNumber}
+        placeholder="Phone Number"
+      />
+
+      <TextInput
+        value={password}
+        onChange={setPassword}
+        placeholder="Password"
+        type="password"
+      />
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        className="bg-black p-3 rounded-md disabled:opacity-50"
+      >
+        {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
+      </button>
+
+      {mode === "EMPLOYEE" && (
+        <p className="text-center text-sm">
+          {isLogin ? (
+            <>
+              New employee?{" "}
+              <span
+                className="underline cursor-pointer"
+                onClick={() => setIsLogin(false)}
+              >
+                Request access
+              </span>
+            </>
+          ) : (
+            <>
+              Already registered?{" "}
+              <span
+                className="underline cursor-pointer"
+                onClick={() => setIsLogin(true)}
+              >
+                Login
+              </span>
+            </>
+          )}
+        </p>
+      )}
     </div>
   );
 };
