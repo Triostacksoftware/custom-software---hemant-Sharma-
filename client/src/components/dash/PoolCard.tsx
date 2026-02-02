@@ -11,7 +11,8 @@ export default function PoolCard({
   onViewDetails = () => {},
   onLeave = () => {},
   isDiscover = true,
-  status = "active", // active, pending, full
+  status = "active",
+  onClick = () => {},
 }) {
   const isFull = currentMembers >= maxMembers;
   const isPending = status === "pending";
@@ -23,7 +24,7 @@ export default function PoolCard({
   };
 
   return (
-    <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5 hover:border-zinc-700 transition-all duration-200">
+    <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5 hover:border-zinc-700 transition-all duration-200" onClick={onClick}>
       {/* Pool Name */}
       <h3 className="text-xl font-semibold text-white mb-4 truncate">{name}</h3>
       

@@ -4,14 +4,21 @@ import { useUserContext } from "../context/UserContext";
 import AuthForm from "../components/AuthForm";
 
 const Auth = () => {
-  const { isLoggedIn, loading } = useUserContext();
+  const { isLoggedIn, loading, role } = useUserContext();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && isLoggedIn) {
-      navigate("/", { replace: true });
+    if (loading) return;
+
+    if (isLoggedIn) {
+      console.log("Role:", role);
+      if (role === "employee") {
+        navigate("/employee", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     }
-  }, [isLoggedIn, loading, navigate]);
+  }, [isLoggedIn, role, loading, navigate]);
 
   if (loading) return null;
 

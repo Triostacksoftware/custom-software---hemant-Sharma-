@@ -2,19 +2,19 @@ import { ReactNode, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserContext } from "../context/UserContext";
 
-const ProtectedRoute = ({ children }: { children: ReactNode }) => {
-  const { isLoggedIn, loading } = useUserContext();
+const EmployeeRoute = ({ children }: { children: ReactNode }) => {
+  const { role, loading } = useUserContext();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isLoggedIn) {
-      navigate("/auth", { replace: true });
+    if (!loading && role !== "employee") {
+      navigate("/", { replace: true });
     }
-  }, [isLoggedIn, loading, navigate]);
+  }, [role, loading, navigate]);
 
   if (loading) return null;
 
   return <>{children}</>;
 };
 
-export default ProtectedRoute;
+export default EmployeeRoute;

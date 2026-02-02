@@ -2,19 +2,15 @@ import React, { useState } from 'react'
 import SideBar from '../components/SideBar.tsx'
 import PoolCard from '../components/dash/PoolCard.tsx'
 import { useNavigate } from 'react-router-dom'
-
-export const data = {
-  pools: [
-    {id:1, name: "High Rollers", minBet: 1000, maxBet: 10000, currentMembers: 2, maxMembers: 4, status: "active"},
-    {id:2, name: "Casual Play", minBet: 100, maxBet: 500, currentMembers: 4, maxMembers: 8, status: "active"},
-    {id:3, name: "Beginners Luck", minBet: 10, maxBet: 100, currentMembers: 1, maxMembers: 5, status: "active"},
-    {id:4, name: "Weekend Warriors", minBet: 500, maxBet: 2000, currentMembers: 3, maxMembers: 6, status: "active"},
-  ]
-}
+import { usePools } from '../context/PoolsProvider.tsx'
 
 const Dashboard = () => {
-  const [pools, setPools] = useState(data.pools);
-  const [currentPool, setCurrentPool] = useState(data.pools[0]);
+
+
+  const data = usePools()?.allPools;
+
+  const [pools, setPools] = useState(data);
+  const [currentPool, setCurrentPool] = useState(data[0]);
   const [infoModalShown, setInfoModalShown] = useState(false);
   const [alertModal, setAlertModal] = useState([false, {}]);
 
