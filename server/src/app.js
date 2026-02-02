@@ -10,6 +10,7 @@ const groupModel = require("./models/group.js");
 
 const userRoutes = require("./routes/user.js");
 const employeeRoutes = require("./routes/employee.js");
+const adminRoutes = require("./routes/admin.js");
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 
 app.use(userRoutes);
 app.use(employeeRoutes);
+app.use(adminRoutes);
 
 mongoose.connect(process.env.DATABASE_CONNECTION_STRING)
     .then(() => {
