@@ -1,9 +1,11 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
 const Employee = require("../models/employee.js");
 const Groups = require("../models/group.js");
+const User = require("../models/user.js");
 
 
 
@@ -113,5 +115,97 @@ exports.createGroup = async (req, res, next) => {
         res.status(500).json({ success: false, message: "Internal server error" });
     }
 }
+
+//controller for adding members to group
+exports.addMemberToGroup = async (req, res, next) => {
+    try {
+        const { groupId } = req.params;   //groupId to be sent as query params
+        const { userId } = req.body;      //userId on request body, can be configured later
+
+        //validate IDs
+        if (!mongoose.Types.ObjectId.isValid(groupId) || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ success: false, message: "Invalid groupId or userId" });
+
+        }
+        //fetch group
+        const group = await Groups.findById(groupId);
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        //check group status(member can;t be added if group is no in DRAFT state)
+        if (group.status !== "DRAFT") {
+            return res.status(400).json({
+                success: false,
+                message: "Members can only be added while group is in DRAFT state"
+            });
+        }
+
+        //check capacity of group (number of members should not be greater than totalMembers)
+        if (group.members.length >= group.totalMembers) {
+            return res.status(400).json({
+                success: false,
+                message: "Group member limit reached"
+            });
+        }
+
+        //fetch users
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        //only approved users can be added to groups
+        if (user.approvalStatus !== "APPROVED") {
+            return res.status(403).json({
+                success: false,
+                message: "User is not approved"
+            });
+        }
+
+        //prevent duplicate member addition
+        const alreadyMember = group.members.some(
+            member => member.userId.toString() === userId
+        );
+
+        if (alreadyMember) {
+            return res.status(409).json({
+                success: false,
+                message: "User already added to this group"
+            });
+        }
+
+        //add member
+        group.members.push({
+            userId,
+            hasWon: false,
+            totalPaid: 0,
+            totalReceived: 0,
+            status: "ACTIVE"
+        });
+
+        await group.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Member added to group successfully",
+            currentCount: group.members.length
+        });
+
+
+    } catch (error) {
+        console.error("Add member error:", error);
+        return res.status(500).json({
+            success: false, message: "Internal server error"
+        });
+
+    }
+};
 
 
