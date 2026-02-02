@@ -63,4 +63,55 @@ exports.adminLogin = async (req, res, next) => {
     }
 };
 
+//controller for creating groups
+exports.createGroup = async (req, res, next) => {
+    try {
+        const { name, totalMembers, totalMonths, monthlyContribution } = req.body;
+
+        //form data validation
+        if (!name || !totalMembers || !totalMonths || !monthlyContribution) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields are required"
+            });
+        }
+
+        //business logic validation
+        if (totalMembers !== totalMonths) {
+            return res.status(400).json({
+                success: false,
+                message: "Total members must be equal to total months"
+            });
+        }
+
+        if (monthlyContribution <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Monthly contribution must be greater than zero"
+            });
+        }
+
+        //create group in DRAFT state
+        const group = await Groups.create({
+            name,
+            totalMembers,
+            totalMonths,
+            monthlyContribution,
+            members: [],
+            currentMonth: 1,
+            status: "DRAFT"
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Group created successfully",
+            groupId: group._id
+        });
+
+    } catch (error) {
+        console.log("Group creation error: ", error);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+}
+
 
