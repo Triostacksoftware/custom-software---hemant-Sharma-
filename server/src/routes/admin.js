@@ -14,4 +14,8 @@ router.post('/admin/create_group/', authentication.authenticate, authentication.
 //endpoint to add new members to group
 router.post('/admin/group/add_member/:groupId', authentication.authenticate, authentication.isAdmin, adminController.addMemberToGroup);
 
+//endpoint to activate a group
+router.post('/admin/group/activate_group/:groupId', authentication.authenticate, authentication.isAdmin, adminController.activateGroup);
+
+
 module.exports = router;

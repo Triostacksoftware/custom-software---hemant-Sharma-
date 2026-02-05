@@ -209,3 +209,65 @@ exports.addMemberToGroup = async (req, res, next) => {
 };
 
 
+//controller to activate a group
+exports.activateGroup = async (req, res, next) => {
+    try {
+        const { groupId } = req.params;
+
+        //validate groupId
+        if (!groupId) {
+            return res.status(400).json({
+                success: false,
+                message: "Group ID is required"
+            });
+        }
+
+        //fetch group
+        const group = await Groups.findById(groupId);
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        //group must be in DRAFT
+        if (group.status !== "DRAFT") {
+            return res.status(400).json({
+                success: false,
+                message: "Only DRAFT groups can be activated"
+            });
+        }
+
+        //member count must match
+        if (group.members.length !== group.totalMembers) {
+            return res.status(400).json({
+                success: false,
+                message: "Group must have all members before activation"
+            });
+        }
+
+        //activate group
+        group.status = "ACTIVE";
+
+        group.startDate = new Date();
+
+        await group.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Group activated successfully",
+            startDate: group.startDate
+        });
+
+    } catch (error) {
+        console.error("Activate group error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
+
+
