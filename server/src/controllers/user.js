@@ -36,8 +36,7 @@ exports.userSignup = async (req, res, next) => {
         res.status(201).json({ message: "User creation successful. Awaiting admin approval", success: true });
 
     } catch (error) {
-        console.log("User creation error: ", error);
-        res.status(500).json({ error: "Internal server error" });
+        next(error);
     }
 }
 
@@ -84,8 +83,7 @@ exports.userLogin = async (req, res, next) => {
 
 
     } catch (error) {
-        console.log("Login error: ", error);
-        res.status(500).json({ error: "Internal server error" });
+        next(error);
 
     }
 };

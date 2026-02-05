@@ -8,6 +8,8 @@ const userModel = require("./models/user.js");
 const employeeModel = require("./models/employee.js");
 const groupModel = require("./models/group.js");
 
+const errorHandler = require("./middleware/error_handler.js");
+
 const userRoutes = require("./routes/user.js");
 const employeeRoutes = require("./routes/employee.js");
 const adminRoutes = require("./routes/admin.js");
@@ -20,6 +22,9 @@ app.use(express.json());
 app.use(userRoutes);
 app.use(employeeRoutes);
 app.use(adminRoutes);
+
+
+app.use(errorHandler);
 
 mongoose.connect(process.env.DATABASE_CONNECTION_STRING)
     .then(() => {

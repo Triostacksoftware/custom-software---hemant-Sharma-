@@ -35,8 +35,7 @@ exports.employeeSignup = async (req, res, next) => {
 
     } catch (error) {
 
-        console.log("Employee creation error: ", error);
-        res.status(500).json({ error: "Internal server error" });
+        next(error);
     }
 }
 
@@ -83,8 +82,7 @@ exports.employeeLogin = async (req, res, next) => {
 
 
     } catch (error) {
-        console.log("Login error: ", error);
-        res.status(500).json({ error: "Internal server error" });
 
+        next(error);
     }
 };

@@ -59,9 +59,8 @@ exports.adminLogin = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.log("Admin login error ", error);
-        res.status(500).json({ error: "Internal server error" });
 
+        next(error);
     }
 };
 
@@ -111,8 +110,8 @@ exports.createGroup = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.log("Group creation error: ", error);
-        res.status(500).json({ success: false, message: "Internal server error" });
+
+        next(error);
     }
 }
 
@@ -200,10 +199,8 @@ exports.addMemberToGroup = async (req, res, next) => {
 
 
     } catch (error) {
-        console.error("Add member error:", error);
-        return res.status(500).json({
-            success: false, message: "Internal server error"
-        });
+
+        next(error);
 
     }
 };
@@ -261,12 +258,8 @@ exports.activateGroup = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.error("Activate group error:", error);
 
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
+        next(error);
     }
 };
 
