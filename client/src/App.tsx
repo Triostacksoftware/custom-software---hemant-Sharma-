@@ -7,6 +7,9 @@ import YourPools from "./pages/YourPools";
 import Pool from "./pages/Pool";
 import Employee from "./pages/Employee";
 import EmployeeRoute from "./pages/EmployeeRoute";
+import AdminRoute from "./pages/AdminRoute";
+import AdminAuth from "./pages/admin/Auth";
+import AdminDashboard from "./pages/admin/Dashboard";
 
 const App = () => {
   return (
@@ -51,6 +54,24 @@ const App = () => {
 
           path="/employee"
         
+        />
+
+        <Route 
+          element={
+            <AdminAuth />
+          }
+
+          path="/admin/auth"
+        />
+
+        <Route 
+          element={
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
+          }
+
+          path="/admin/dashboard"
         />
       </Routes>
     </main>
