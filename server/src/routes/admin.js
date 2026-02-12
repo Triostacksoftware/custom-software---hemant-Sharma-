@@ -26,5 +26,11 @@ router.get('/admin/groups/fetch_all', authentication.authenticate, authenticatio
 //endpoint to fetch all employees
 router.get('/admin/employees/fetch_all', authentication.authenticate, authentication.isAdmin, adminController.getEmployees);
 
+//endpoint to fetch pending members
+router.get('/admin/users/fetch/pending_user/', authentication.authenticate, authentication.isAdmin, adminController.getPendingUsers);
+
+//endpoint to fetch pending employees
+router.get('/admin/employees/fetch/pending_employee/', authentication.authenticate, authentication.isAdmin, adminController.getPendingEmployees);
+
 
 module.exports = router;

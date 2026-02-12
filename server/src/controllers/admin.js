@@ -430,3 +430,109 @@ exports.getGroups = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//controller to fetch users with approval pending
+exports.getPendingUsers = async (req, res, next) => {
+    try {
+        const { page, limit, search } = req.query;
+
+        //sanitize inputs
+        const currentPage = Math.max(1, Number(page) || 1);
+        const resultsPerPage = Math.max(1, Number(limit) || 10);
+        const searchTerm = search?.trim() || "";
+
+        const skipAmount = (currentPage - 1) * resultsPerPage;
+
+        //query Filter, 
+        const queryFilter = {
+            approvalStatus: "PENDING",
+            ...(searchTerm && {
+                $or: [
+                    { name: { $regex: searchTerm, $options: "i" } },
+                    { email: { $regex: searchTerm, $options: "i" } },
+                    { phone: { $regex: searchTerm, $options: "i" } },
+                ],
+            }),
+        };
+
+        // Running find and countDocuments at the same time
+        const [pendingUsers, totalCount] = await Promise.all([
+            User.find(queryFilter)
+                .sort({ createdAt: -1 })
+                .skip(skipAmount)
+                .limit(resultsPerPage)
+                .select("-password")
+                .lean(), // Optimization: Returns plain JS objects instead of heavy Mongoose documents
+            User.countDocuments(queryFilter),
+        ]);
+
+        res.status(200).json({
+            success: true,
+            message: "Pending users fetched successfully",
+            data: {
+                users: pendingUsers,
+                pagination: {
+                    total: totalCount,
+                    currentPage,
+                    totalPages: Math.ceil(totalCount / resultsPerPage),
+                },
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to fetch pending employees
+exports.getPendingEmployees = async (req, res, next) => {
+    try {
+        const { page, limit, search } = req.query;
+
+        //sanitize inputs
+        const currentPage = Math.max(1, Number(page) || 1);
+        const resultsPerPage = Math.max(1, Number(limit) || 10);
+        const searchTerm = search?.trim() || "";
+
+        const skipAmount = (currentPage - 1) * resultsPerPage;
+
+        //query Filter, 
+        const queryFilter = {
+            approvalStatus: "PENDING",
+            ...(searchTerm && {
+                $or: [
+                    { name: { $regex: searchTerm, $options: "i" } },
+                    { email: { $regex: searchTerm, $options: "i" } },
+                    { phone: { $regex: searchTerm, $options: "i" } },
+                ],
+            }),
+        };
+
+        // Running find and countDocuments at the same time
+        const [pendingEmployees, totalCount] = await Promise.all([
+            Employee.find(queryFilter)
+                .sort({ createdAt: -1 })
+                .skip(skipAmount)
+                .limit(resultsPerPage)
+                .select("-password")
+                .lean(), // Optimization: Returns plain JS objects instead of heavy Mongoose documents
+            Employee.countDocuments(queryFilter),
+        ]);
+
+        res.status(200).json({
+            success: true,
+            message: "Pending employees fetched successfully",
+            data: {
+                employees: pendingEmployees,
+                pagination: {
+                    total: totalCount,
+                    currentPage,
+                    totalPages: Math.ceil(totalCount / resultsPerPage),
+                },
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
