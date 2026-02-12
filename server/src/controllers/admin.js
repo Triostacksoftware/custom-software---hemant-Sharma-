@@ -536,3 +536,155 @@ exports.getPendingEmployees = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//controller to approve users
+exports.approveUser = async (req, res, next) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(403).json({ error: "User ID is required" });
+        }
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        if (user.approvalStatus !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `User already ${user.status.toLowerCase()}`,
+            });
+        }
+
+        user.approvalStatus = "APPROVED";
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "User approved successfully",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to reject users
+exports.rejectUser = async (req, res, next) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(403).json({ error: "User ID is required" });
+        }
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        if (user.approvalStatus !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `User already ${user.status.toLowerCase()}`,
+            });
+        }
+
+        user.approvalStatus = "REJECTED";
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "User rejected successfully",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to approve employees
+exports.approveEmployee = async (req, res, next) => {
+    try {
+        const { employeeId } = req.body;
+
+        if (!employeeId) {
+            return res.status(403).json({ error: "Employee ID is required" });
+        }
+
+        const employee = await Employee.findById(employeeId);
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found",
+            });
+        }
+
+        if (employee.approvalStatus !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `Employee already ${employee.status.toLowerCase()}`,
+            });
+        }
+
+        employee.approvalStatus = "APPROVED";
+        await employee.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Employee approved successfully",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to reject employee
+exports.rejectEmployee = async (req, res, next) => {
+    try {
+        const { employeeId } = req.body;
+
+        if (!employeeId) {
+            return res.status(403).json({ error: "Employee ID is required" });
+        }
+
+        const employee = await Employee.findById(employeeId);
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found",
+            });
+        }
+
+        if (employee.approvalStatus !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `Employee already ${employee.status.toLowerCase()}`,
+            });
+        }
+
+        employee.approvalStatus = "REJECTED";
+        await employee.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Employee rejected successfully",
+        });
+    } catch (error) {
+        next(error);
+    }
+};

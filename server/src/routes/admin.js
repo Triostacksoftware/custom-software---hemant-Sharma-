@@ -32,5 +32,17 @@ router.get('/admin/users/fetch/pending_user/', authentication.authenticate, auth
 //endpoint to fetch pending employees
 router.get('/admin/employees/fetch/pending_employee/', authentication.authenticate, authentication.isAdmin, adminController.getPendingEmployees);
 
+//endpoint to approve users
+router.post('/admin/users/approve_user/', authentication.authenticate, authentication.isAdmin, adminController.approveUser);
+
+//endpoint to reject users
+router.post('/admin/users/reject_user', authentication.authenticate, authentication.isAdmin, adminController.rejectUser);
+
+//endpoint to approve employees
+router.post('/admin/employees/approve_employee', authentication.authenticate, authentication.isAdmin, adminController.approveEmployee);
+
+//endpoint to reject users
+router.post('/admin/employees/reject_employee', authentication.authenticate, authentication.isAdmin, adminController.rejectEmployee);
+
 
 module.exports = router;
