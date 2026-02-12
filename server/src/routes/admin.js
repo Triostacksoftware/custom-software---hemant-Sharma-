@@ -17,5 +17,8 @@ router.post('/admin/group/add_member/:groupId', authentication.authenticate, aut
 //endpoint to activate a group
 router.post('/admin/group/activate_group/:groupId', authentication.authenticate, authentication.isAdmin, adminController.activateGroup);
 
+//endpoint to fetch all members (pagination optional)
+router.get('/admin/users/fetch_all', authentication.authenticate, authentication.isAdmin, adminController.getMembers);
+
 
 module.exports = router;

@@ -264,3 +264,54 @@ exports.activateGroup = async (req, res, next) => {
 };
 
 
+//controller to fetch all the members
+exports.getMembers = async (req, res, next) => {
+    try {
+
+        //raw values from query
+        const { page, limit, search } = req.query;
+
+        //Sanitize the values
+        const currentPage = Math.max(1, Number(page) || 1);
+        const resultsPerPage = Math.max(1, Number(limit) || 10);
+        const searchTerm = search?.trim() || "";
+
+        //calculate number of documents to skip
+        const skipAmount = (currentPage - 1) * resultsPerPage;
+
+        //build the search filter
+        const queryFilter = searchTerm
+            ? {
+                $or: [
+                    { name: { $regex: searchTerm, $options: "i" } },
+                    { phoneNumber: { $regex: searchTerm, $options: "i" } }
+                ]
+            }
+            : {};
+
+        const [members, totalMembers] = await Promise.all([
+            User.find(queryFilter)
+                .select("-password")  //never send passwords
+                .sort({ createdAt: -1 })
+                .skip(skipAmount)
+                .limit(resultsPerPage),
+            User.countDocuments(queryFilter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message: "Members fetched successfully",
+            data: {
+                members,
+                pagination: {
+                    total: totalMembers,
+                    currentPage,
+                    totalPages: Math.ceil(totalMembers / resultsPerPage),
+                },
+            },
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
