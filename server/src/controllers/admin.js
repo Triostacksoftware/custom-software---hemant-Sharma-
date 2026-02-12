@@ -315,3 +315,118 @@ exports.getMembers = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//controller to fetch all the employee
+exports.getEmployees = async (req, res, next) => {
+    try {
+
+        const { page, limit, search, approvalStatus } = req.query;
+
+        const currentPage = Math.max(1, Number(page) || 1);
+        const resultsPerPage = Math.max(1, Number(limit) || 10);
+        const searchTerm = search?.trim() || "";
+        const statusFilter = approvalStatus?.trim() || "";
+
+        const skipAmount = (currentPage - 1) * resultsPerPage;
+
+        // Build filter
+        const queryFilter = {
+            ...(searchTerm && {
+                $or: [
+                    { name: { $regex: searchTerm, $options: "i" } },
+                    { phoneNumber: { $regex: searchTerm, $options: "i" } }
+                ]
+            }),
+            ...(statusFilter && { approvalStatus: statusFilter })
+        };
+
+        const [employees, totalEmployees] = await Promise.all([
+            Employee.find(queryFilter)
+                .select("-password")
+                .sort({ createdAt: -1 })
+                .skip(skipAmount)
+                .limit(resultsPerPage),
+            Employee.countDocuments(queryFilter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message: "Employees fetched successfully",
+            data: {
+                employees,
+                pagination: {
+                    total: totalEmployees,
+                    currentPage,
+                    totalPages: Math.ceil(totalEmployees / resultsPerPage),
+                },
+            },
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to fetch all the groups
+exports.getGroups = async (req, res, next) => {
+    try {
+
+        const { page, limit, search, status } = req.query;
+
+        const currentPage = Math.max(1, Number(page) || 1);
+        const resultsPerPage = Math.max(1, Number(limit) || 10);
+        const searchTerm = search?.trim() || "";
+        const statusFilter = status?.trim() || "";
+
+        const skipAmount = (currentPage - 1) * resultsPerPage;
+
+        // Build filter
+        const queryFilter = {
+            ...(searchTerm && {
+                name: { $regex: searchTerm, $options: "i" }
+            }),
+            ...(statusFilter && { status: statusFilter })
+        };
+
+        const [groups, totalGroups] = await Promise.all([
+            Groups.aggregate([
+                { $match: queryFilter }, // Filter first
+                { $sort: { createdAt: -1 } }, // Sort
+                { $skip: skipAmount }, // Paginate
+                { $limit: resultsPerPage },
+                {
+                    $project: {
+                        name: 1,
+                        status: 1,
+                        // This calculates the size of the array without returning the array itself
+                        memberCount: { $size: "$members" },
+                        totalMonths: 1,
+                        monthlyContribution: 1,
+                        currentMonth: 1,
+                        startDate: 1,
+                        endDate: 1
+                    }
+                }
+            ]),
+            Groups.countDocuments(queryFilter)
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message: "Groups fetched successfully",
+            data: {
+                groups,
+                pagination: {
+                    total: totalGroups,
+                    currentPage,
+                    totalPages: Math.ceil(totalGroups / resultsPerPage),
+                },
+            },
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};

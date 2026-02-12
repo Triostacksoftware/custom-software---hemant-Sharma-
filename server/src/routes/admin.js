@@ -20,5 +20,11 @@ router.post('/admin/group/activate_group/:groupId', authentication.authenticate,
 //endpoint to fetch all members (pagination optional)
 router.get('/admin/users/fetch_all', authentication.authenticate, authentication.isAdmin, adminController.getMembers);
 
+//endpoint to fetch all groups
+router.get('/admin/groups/fetch_all', authentication.authenticate, authentication.isAdmin, adminController.getGroups);
+
+//endpoint to fetch all employees
+router.get('/admin/employees/fetch_all', authentication.authenticate, authentication.isAdmin, adminController.getEmployees);
+
 
 module.exports = router;
