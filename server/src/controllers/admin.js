@@ -6,6 +6,7 @@ const bcrypt = require("bcrypt");
 const Employee = require("../models/employee.js");
 const Groups = require("../models/group.js");
 const User = require("../models/user.js");
+const Contribution = require("../models/contribution.js");
 
 
 
@@ -402,6 +403,7 @@ exports.getGroups = async (req, res, next) => {
                         status: 1,
                         // This calculates the size of the array without returning the array itself
                         memberCount: { $size: "$members" },
+                        totalMembers: "$totalMembers",
                         totalMonths: 1,
                         monthlyContribution: 1,
                         currentMonth: 1,
@@ -684,6 +686,123 @@ exports.rejectEmployee = async (req, res, next) => {
             success: true,
             message: "Employee rejected successfully",
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get group details **(important)
+exports.getGroupDetails = async (req, res, next) => {
+    try {
+        const { groupId } = req.params;
+
+        // group ID validation
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return res.status(400).json({ success: false, message: "Invalid group ID" });
+        }
+
+        // fetch Group Data
+        const group = await Groups.findById(groupId)
+            .populate("members.userId", "name")
+            .select("-__v")
+            .lean();
+
+        if (!group) {
+            return res.status(404).json({ success: false, message: "Group not found" });
+        }
+
+        const { totalMembers, monthlyContribution, currentMonth, members } = group;
+
+        // optimized Aggregation
+        // We calculate everything in one trip to the database
+        const aggregatedContributions = await Contribution.aggregate([
+            { $match: { groupId: new mongoose.Types.ObjectId(groupId) } },
+            {
+                $lookup: {
+                    from: "employees",
+                    localField: "collectedBy",
+                    foreignField: "_id",
+                    as: "collector"
+                }
+            },
+            { $unwind: { path: "$collector", preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: "$userId",
+                    totalPaid: { $sum: "$amountPaid" },
+                    currentMonthPaid: {
+                        $sum: {
+                            $cond: [{ $eq: ["$monthNumber", currentMonth] }, "$amountPaid", 0]
+                        }
+                    },
+                    contributionHistory: {
+                        $push: {
+                            monthNumber: "$monthNumber",
+                            amountPaid: "$amountPaid",
+                            paymentMode: "$paymentMode",
+                            collectedAt: "$collectedAt",
+                            collectorName: "$collector.name"
+                        }
+                    }
+                }
+            }
+        ]);
+
+        // mapping the results for O(1) fast lookup
+        const contributionMap = new Map(
+            aggregatedContributions.map(item => [item._id.toString(), item])
+        );
+
+        let totalCollected = 0;
+        let currentMonthCollection = 0;
+
+        // build Member Response & Calculate Totals
+        const totalExpectedPerMember = currentMonth * monthlyContribution;
+
+        const membersResponse = members.map((member) => {
+            const userId = member.userId?._id?.toString();
+            const contributionData = contributionMap.get(userId) || {};
+
+            const totalPaid = contributionData.totalPaid || 0;
+            const history = contributionData.contributionHistory || [];
+
+            // accumulate global totals while looping
+            totalCollected += totalPaid;
+            currentMonthCollection += (contributionData.currentMonthPaid || 0);
+
+            return {
+                userId,
+                name: member.userId?.name || "Unknown User",
+                hasWon: member.hasWon,
+                winningMonth: member.winningMonth,
+                totalPaid,
+                totalReceived: member.totalReceived,
+                expectedTillNow: totalExpectedPerMember,
+                pendingAmount: Math.max(0, totalExpectedPerMember - totalPaid),
+                contributionHistory: history,
+            };
+        });
+
+        // final Financial Calculations
+        const monthlyPool = group.totalMonths * monthlyContribution;
+        const winnersCount = members.filter(m => m.hasWon).length;
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                group: { ...group, members: undefined }, // Remove raw members list
+                financialSummary: {
+                    monthlyPool,
+                    totalExpectedTillNow: currentMonth * totalMembers * monthlyContribution,
+                    totalCollected,
+                    currentMonthCollection,
+                    totalRotated: winnersCount * monthlyPool,
+                },
+                members: membersResponse,
+            },
+        });
+
     } catch (error) {
         next(error);
     }

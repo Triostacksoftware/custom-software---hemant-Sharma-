@@ -44,5 +44,8 @@ router.post('/admin/employees/approve_employee', authentication.authenticate, au
 //endpoint to reject users
 router.post('/admin/employees/reject_employee', authentication.authenticate, authentication.isAdmin, adminController.rejectEmployee);
 
+//endpoint to fetch group details
+router.get('/admin/group/fetch/group_details/:groupId', authentication.authenticate, authentication.isAdmin, adminController.getGroupDetails);
+
 
 module.exports = router;
