@@ -1,0 +1,258 @@
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(3px);
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+}
+
+.modal-header h2 {
+    font-size: 1.5rem;
+    color: #1e293b;
+    margin: 0;
+    flex: 1;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #64748B;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.close-btn:hover {
+    background: #F1F5F9;
+    color: #0F172A;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #334155;
+    font-size: 0.95rem;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    font-size: 15px;
+    transition: all 0.2s;
+    background: #FFFFFF;
+    color: #0F172A;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.form-group input:disabled {
+    background: #f8fafc;
+    cursor: not-allowed;
+}
+
+.form-group input::placeholder {
+    color: #94a3b8;
+}
+
+.error-message {
+    background: #fee2e2;
+    color: #dc2626;
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    border-left: 4px solid #dc2626;
+}
+
+.api-response {
+    margin-bottom: 1.5rem;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+}
+
+.api-response.success {
+    border-color: #10b981;
+}
+
+.api-response.error {
+    border-color: #ef4444;
+}
+
+.response-header {
+    padding: 0.75rem;
+    font-weight: 600;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.api-response.success .response-header {
+    background: #ecfdf5;
+    color: #10b981;
+}
+
+.api-response.error .response-header {
+    background: #fef2f2;
+    color: #ef4444;
+}
+
+.response-message {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.response-data {
+    padding: 0.75rem;
+    background: #f8fafc;
+}
+
+.response-data pre {
+    margin: 0.5rem 0 0 0;
+    padding: 0.75rem;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.response-note {
+    padding: 0.75rem;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.875rem;
+    border-top: 1px solid #fde68a;
+}
+
+.form-footer {
+    margin-top: 2rem;
+}
+
+.submit-btn {
+    width: 100%;
+    padding: 12px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.submit-btn:hover:not(:disabled) {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(37, 99, 235, 0.2);
+}
+
+.submit-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.info-text {
+    margin-top: 1rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.text-link {
+    background: none;
+    border: none;
+    color: #2563eb;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: inherit;
+    padding: 0;
+    transition: color 0.2s;
+}
+
+.text-link:hover {
+    color: #1d4ed8;
+}
