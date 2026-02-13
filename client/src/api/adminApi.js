@@ -5,7 +5,7 @@ export const adminApi = {
     groups: {
         create: (data) => api.post('/admin/create_group/', data),
         fetchAll: (params = {}) => api.get('/admin/groups/fetch_all', { params }),
-        details: (groupId) => api.get(`/admin/group/details/${groupId}`),
+        details: (groupId) => api.get(`/admin/group/fetch/group_details/${groupId}`),
         addMember: (groupId, userId) =>
             api.post(`/admin/group/add_member/${groupId}`, { userId }),
         activate: (groupId) =>

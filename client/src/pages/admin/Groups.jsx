@@ -19,7 +19,7 @@ const Groups = () => {
     const [pageSize, setPageSize] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
 
-    // Debounce search input
+    // Debounce search
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearch(searchTerm);
@@ -27,7 +27,7 @@ const Groups = () => {
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
-    // Reset to page 1 when search or filter changes
+    // Reset to page 1 when search, filter, or pageSize changes
     useEffect(() => {
         setCurrentPage(1);
     }, [debouncedSearch, statusFilter, pageSize]);
@@ -93,23 +93,8 @@ const Groups = () => {
         }
     };
 
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(amount);
-    };
-
-    const formatDate = (dateString) => {
-        if (!dateString) return '—';
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-IN', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-        });
+    const formatDuration = (months) => {
+        return `${months} ${months === 1 ? 'month' : 'months'}`;
     };
 
     return (
@@ -191,16 +176,13 @@ const Groups = () => {
                                     <th>Group Name</th>
                                     <th>Status</th>
                                     <th>Members</th>
-                                    <th>Monthly Contribution</th>
                                     <th>Duration</th>
-                                    <th>Current Month</th>
-                                    <th>Start Date</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {groups.length === 0 ? (
                                     <tr>
-                                        <td colSpan="7" className="no-data">
+                                        <td colSpan="4" className="no-data">
                                             No groups found.
                                         </td>
                                     </tr>
@@ -217,11 +199,10 @@ const Groups = () => {
                                                     {group.status}
                                                 </span>
                                             </td>
-                                            <td>{group.memberCount} / {group.totalMembers}</td>
-                                            <td>{formatCurrency(group.monthlyContribution)}</td>
-                                            <td>{group.totalMonths} months</td>
-                                            <td>{group.currentMonth} / {group.totalMonths}</td>
-                                            <td className="group-date">{formatDate(group.startDate)}</td>
+                                            <td>
+                                                {group.memberCount} / {group.totalMembers}
+                                            </td>
+                                            <td>{formatDuration(group.totalMonths)}</td>
                                         </tr>
                                     ))
                                 )}

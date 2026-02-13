@@ -10,6 +10,7 @@ import Groups from './pages/admin/Groups';
 import Employees from './pages/admin/Employees';
 import Approvals from './pages/admin/Approvals';
 import CreateGroup from './pages/admin/CreateGroup';
+import GroupDetails from './pages/admin/GroupDetails';
 
 import './App.css';
 
@@ -60,6 +61,14 @@ function App() {
                             <AdminRoute>
                                 <AdminLayout>
                                     <Groups />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/group/:groupId" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <GroupDetails />
                                 </AdminLayout>
                             </AdminRoute>
                         } />
