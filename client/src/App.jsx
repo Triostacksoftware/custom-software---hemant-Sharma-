@@ -11,6 +11,7 @@ import Employees from './pages/admin/Employees';
 import Approvals from './pages/admin/Approvals';
 import CreateGroup from './pages/admin/CreateGroup';
 import GroupDetails from './pages/admin/GroupDetails';
+import MemberDetails from './pages/admin/MemberDetails';
 
 import './App.css';
 
@@ -45,6 +46,14 @@ function App() {
                             <AdminRoute>
                                 <AdminLayout>
                                     <Members />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/member/:userId" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <MemberDetails />
                                 </AdminLayout>
                             </AdminRoute>
                         } />

@@ -22,6 +22,8 @@ export const adminApi = {
             api.post('/admin/users/reject_user/', { userId }),
         fetchAll: (params = {}) =>
             api.get('/admin/users/fetch_all', { params }),
+        details: (userId) =>
+            api.get(`/admin/users/fetch/details/${userId}`),
     },
 
     // Employee Management

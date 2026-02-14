@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { adminApi } from '../../api/adminApi';
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import './Members.css';
@@ -170,7 +171,11 @@ const Members = () => {
                                 ) : (
                                     members.map((member) => (
                                         <tr key={member._id}>
-                                            <td className="member-name">{member.name}</td>
+                                            <td className="member-name">
+                                                <Link to={`/admin/member/${member._id}`} className="member-link">
+                                                    {member.name}
+                                                </Link>
+                                            </td>
                                             <td className="member-phone">{member.phoneNumber}</td>
                                             <td>
                                                 <span className={getStatusBadgeClass(member.approvalStatus)}>

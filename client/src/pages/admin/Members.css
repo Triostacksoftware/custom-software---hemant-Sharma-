@@ -24,6 +24,16 @@
     margin: 0;
 }
 
+.member-link {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.member-link:hover {
+    text-decoration: underline;
+}
+
 /* Controls */
 .members-controls {
     display: flex;
