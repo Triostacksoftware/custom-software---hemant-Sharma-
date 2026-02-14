@@ -67,64 +67,138 @@ exports.adminLogin = async (req, res, next) => {
 
 //controller to fetch admin dashboard stats
 exports.getDashboardStats = async (req, res, next) => {
+    // try {
+    //     const [
+    //         groupTotal,
+    //         groupActive,
+    //         groupDraft,
+    //         groupCompleted,
+
+    //         userTotal,
+    //         userPending,
+    //         userApproved,
+    //         userRejected,
+
+    //         employeeTotal,
+    //         employeePending,
+    //         employeeApproved,
+    //         employeeRejected,
+
+    //     ] = await Promise.all([
+    //         //groups
+    //         Groups.countDocuments(),
+    //         Groups.countDocuments({ status: "ACTIVE" }),
+    //         Groups.countDocuments({ status: "DRAFT" }),
+    //         Groups.countDocuments({ status: "COMPLETED" }),
+
+    //         //users
+    //         User.countDocuments(),
+    //         User.countDocuments({ approvalStatus: "PENDING" }),
+    //         User.countDocuments({ approvalStatus: "APPROVED" }),
+    //         User.countDocuments({ approvalStatus: "REJECTED" }),
+
+    //         //employees
+    //         Employee.countDocuments(),
+    //         Employee.countDocuments({ approvalStatus: "PENDING" }),
+    //         Employee.countDocuments({ approvalStatus: "APPROVED" }),
+    //         Employee.countDocuments({ approvalStatus: "REJECTED" }),
+
+    //     ]);
+
+    //     return res.status(200).json({
+    //         success: true,
+    //         data: {
+    //             groups: {
+    //                 total: groupTotal,
+    //                 active: groupActive,
+    //                 draft: groupDraft,
+    //                 completed: groupCompleted,
+    //             },
+    //             users: {
+    //                 total: userTotal,
+    //                 pending: userPending,
+    //                 approved: userApproved,
+    //                 rejected: userRejected,
+    //             },
+    //             employees: {
+    //                 total: employeeTotal,
+    //                 pending: employeePending,
+    //                 approved: employeeApproved,
+    //                 rejected: employeeRejected,
+    //             },
+    //         },
+    //     });
+
+    // } catch (error) {
+
+    //     next(error);
+    // }
+
+
+    //optimized approach
     try {
-        const [
-            groupTotal,
-            groupActive,
-            groupDraft,
-            groupCompleted,
+        // run 3 parallel aggregations (one for each collection)
+        const [groupStats, userStats, employeeStats] = await Promise.all([
+            Groups.aggregate([
+                {
+                    $facet: {
+                        total: [{ $count: "count" }],
+                        active: [{ $match: { status: "ACTIVE" } }, { $count: "count" }],
+                        draft: [{ $match: { status: "DRAFT" } }, { $count: "count" }],
+                        completed: [{ $match: { status: "COMPLETED" } }, { $count: "count" }],
+                    },
+                },
+            ]),
 
-            userTotal,
-            userPending,
-            userApproved,
-            userRejected,
+            User.aggregate([
+                {
+                    $facet: {
+                        total: [{ $count: "count" }],
+                        pending: [{ $match: { approvalStatus: "PENDING" } }, { $count: "count" }],
+                        approved: [{ $match: { approvalStatus: "APPROVED" } }, { $count: "count" }],
+                        rejected: [{ $match: { approvalStatus: "REJECTED" } }, { $count: "count" }],
+                    },
+                },
+            ]),
 
-            employeeTotal,
-            employeePending,
-            employeeApproved,
-            employeeRejected,
-
-        ] = await Promise.all([
-            //groups
-            Groups.countDocuments(),
-            Groups.countDocuments({ status: "ACTIVE" }),
-            Groups.countDocuments({ status: "DRAFT" }),
-            Groups.countDocuments({ status: "COMPLETED" }),
-
-            //users
-            User.countDocuments(),
-            User.countDocuments({ approvalStatus: "PENDING" }),
-            User.countDocuments({ approvalStatus: "APPROVED" }),
-            User.countDocuments({ approvalStatus: "REJECTED" }),
-
-            //employees
-            Employee.countDocuments(),
-            Employee.countDocuments({ approvalStatus: "PENDING" }),
-            Employee.countDocuments({ approvalStatus: "APPROVED" }),
-            Employee.countDocuments({ approvalStatus: "REJECTED" }),
-
+            Employee.aggregate([
+                {
+                    $facet: {
+                        total: [{ $count: "count" }],
+                        pending: [{ $match: { approvalStatus: "PENDING" } }, { $count: "count" }],
+                        approved: [{ $match: { approvalStatus: "APPROVED" } }, { $count: "count" }],
+                        rejected: [{ $match: { approvalStatus: "REJECTED" } }, { $count: "count" }],
+                    },
+                },
+            ]),
         ]);
+
+        // Extract results directly
+        // aggregate returns an array, so we look at index [0]
+        const g = groupStats[0];
+        const u = userStats[0];
+        const e = employeeStats[0];
 
         return res.status(200).json({
             success: true,
             data: {
                 groups: {
-                    total: groupTotal,
-                    active: groupActive,
-                    draft: groupDraft,
-                    completed: groupCompleted,
+                    total: g.total[0]?.count || 0,
+                    active: g.active[0]?.count || 0,
+                    draft: g.draft[0]?.count || 0,
+                    completed: g.completed[0]?.count || 0,
                 },
                 users: {
-                    total: userTotal,
-                    pending: userPending,
-                    approved: userApproved,
-                    rejected: userRejected,
+                    total: u.total[0]?.count || 0,
+                    pending: u.pending[0]?.count || 0,
+                    approved: u.approved[0]?.count || 0,
+                    rejected: u.rejected[0]?.count || 0,
                 },
                 employees: {
-                    total: employeeTotal,
-                    pending: employeePending,
-                    approved: employeeApproved,
-                    rejected: employeeRejected,
+                    total: e.total[0]?.count || 0,
+                    pending: e.pending[0]?.count || 0,
+                    approved: e.approved[0]?.count || 0,
+                    rejected: e.rejected[0]?.count || 0,
                 },
             },
         });
