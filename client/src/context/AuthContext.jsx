@@ -54,7 +54,7 @@ export const AuthProvider = ({ children }) => {
             const { data } = response;
 
             if (!data.success) {
-                throw new Error(data.error || 'Login failed');
+                throw new Error(data.message || data.error || 'Login failed');
             }
 
             const token = data.token;
@@ -71,14 +71,20 @@ export const AuthProvider = ({ children }) => {
             );
 
             const decodedUser = JSON.parse(jsonPayload);
-            // Store only the role from login attempt (for UI display only)
             setUser({ token, role, ...decodedUser });
 
             return { success: true, data };
         } catch (error) {
+            // Extract error message from response if available
+            const errorMessage =
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                error.message ||
+                'Login failed';
+
             return {
                 success: false,
-                error: error.response?.data?.error || error.message || 'Login failed'
+                error: errorMessage
             };
         }
     };
