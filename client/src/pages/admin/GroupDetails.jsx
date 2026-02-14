@@ -5,11 +5,11 @@ import {
     ArrowLeft,
     Calendar,
     Users,
-    DollarSign,
+    IndianRupee,
     Clock,
     Activity,
-    ChevronDown,
-    ChevronUp,
+    // ChevronDown,
+    // ChevronUp,
     X
 } from 'lucide-react';
 import './GroupDetails.css';
@@ -147,7 +147,7 @@ const GroupDetails = () => {
                     </div>
                 </div>
                 <div className="info-card">
-                    <div className="info-icon"><DollarSign size={20} /></div>
+                    <div className="info-icon"><IndianRupee size={20} /></div>
                     <div className="info-content">
                         <span className="info-label">Monthly Contribution</span>
                         <span className="info-value">{formatCurrency(group.monthlyContribution)}</span>
