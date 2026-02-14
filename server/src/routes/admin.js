@@ -50,5 +50,8 @@ router.post('/admin/employees/reject_employee', authentication.authenticate, aut
 //endpoint to fetch group details
 router.get('/admin/group/fetch/group_details/:groupId', authentication.authenticate, authentication.isAdmin, adminController.getGroupDetails);
 
+//endpoint to fetch member details
+router.get('/admin/users/fetch/details/:userId', authentication.authenticate, authentication.isAdmin, adminController.getMemberDetails);
+
 
 module.exports = router;

@@ -951,3 +951,108 @@ exports.getGroupDetails = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//controller to fetch member details
+exports.getMemberDetails = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ success: false, message: "Invalid userId" });
+
+        }
+
+        const userObjId = new mongoose.Types.ObjectId(userId);
+
+        //parallel execution, fetch user and financial details a the same time
+        const [user, contributionAgg, groups] = await Promise.all([
+
+            User.findById(userId).select("-password").lean(),
+
+            //aggregate all contributions of this user across all groups
+            Contribution.aggregate([
+                { $match: { userId: userObjId } },
+                {
+                    $lookup: {
+                        from: "employees",
+                        localField: "collectedBy",
+                        foreignField: "_id",
+                        as: "collector"
+                    },
+                },
+                { $unwind: { path: "$collector", preserveNullAndEmptyArrays: true } },
+                {
+                    $group: {
+                        _id: "$groupId",
+                        totalPaidInGroup: { $sum: "$amountPaid" },
+                        paymentHistory: {
+                            $push: {
+                                monthNumber: "$monthNumber",
+                                amountPaid: "$amountPaid",
+                                paymentMode: "$paymentMode",
+                                collectedAt: "$collectedAt",
+                                remarks: "$remarks",
+                                collectorName: "$collector.name",
+                            },
+                        },
+                    },
+                },
+            ]),
+
+            //fetch the groups where ths user is a member
+            Groups.find({ "members.userId": userId }).lean(),
+        ]);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+
+        }
+
+        //map contributions for instant lookup
+        const contributionMap = new Map(contributionAgg.map(c => [c._id.toString(), c]));
+        let totalPaidAcrossGroups = 0;
+
+        //process group-wise response
+        const groupResponses = groups.map((group) => {
+            const stats = contributionMap.get(group._id.toString()) || {};
+            const totalPaid = stats.totalPaidInGroup || 0;
+            totalPaidAcrossGroups += totalPaid;
+
+            const memberInfo = group.members.find(m => m.userId.toString() === userId);
+            const expected = group.currentMonth * group.monthlyContribution;
+
+            return {
+                groupId: group._id,
+                groupName: group.name,
+                groupStatus: group.status,
+                monthlyContribution: group.monthlyContribution,
+                currentMonth: group.currentMonth,
+                totalPaidInGroup: totalPaid,
+                expectedTillNow: expected,
+                pendingAmount: Math.max(0, expected - totalPaid),
+                hasWon: memberInfo?.hasWon || false,
+                winningMonth: memberInfo?.winningMonth || null,
+                totalReceived: memberInfo?.totalReceived || 0,
+                paymentHistory: stats.paymentHistory || [],
+
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                user,
+                financialSummary: {
+                    totalPaidAcrossGroups,
+                    totalGroups: groups.length,
+                },
+                groups: groupResponses,
+            },
+        });
+
+    } catch (error) {
+        next(error);
+
+    }
+};
