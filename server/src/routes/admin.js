@@ -8,6 +8,9 @@ const authentication = require("../middleware/authentication.js");
 //endpoint for admin login
 router.post('/admin/login/', adminController.adminLogin);
 
+//endpoint to get admin dashboard stats
+router.get('/admin/dashboard/stats/', authentication.authenticate, authentication.isAdmin, adminController.getDashboardStats);
+
 //endpoint for group creation
 router.post('/admin/create_group/', authentication.authenticate, authentication.isAdmin, adminController.createGroup);
 

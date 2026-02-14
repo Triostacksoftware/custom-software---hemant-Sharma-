@@ -65,6 +65,76 @@ exports.adminLogin = async (req, res, next) => {
     }
 };
 
+//controller to fetch admin dashboard stats
+exports.getDashboardStats = async (req, res, next) => {
+    try {
+        const [
+            groupTotal,
+            groupActive,
+            groupDraft,
+            groupCompleted,
+
+            userTotal,
+            userPending,
+            userApproved,
+            userRejected,
+
+            employeeTotal,
+            employeePending,
+            employeeApproved,
+            employeeRejected,
+
+        ] = await Promise.all([
+            //groups
+            Groups.countDocuments(),
+            Groups.countDocuments({ status: "ACTIVE" }),
+            Groups.countDocuments({ status: "DRAFT" }),
+            Groups.countDocuments({ status: "COMPLETED" }),
+
+            //users
+            User.countDocuments(),
+            User.countDocuments({ approvalStatus: "PENDING" }),
+            User.countDocuments({ approvalStatus: "APPROVED" }),
+            User.countDocuments({ approvalStatus: "REJECTED" }),
+
+            //employees
+            Employee.countDocuments(),
+            Employee.countDocuments({ approvalStatus: "PENDING" }),
+            Employee.countDocuments({ approvalStatus: "APPROVED" }),
+            Employee.countDocuments({ approvalStatus: "REJECTED" }),
+
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                groups: {
+                    total: groupTotal,
+                    active: groupActive,
+                    draft: groupDraft,
+                    completed: groupCompleted,
+                },
+                users: {
+                    total: userTotal,
+                    pending: userPending,
+                    approved: userApproved,
+                    rejected: userRejected,
+                },
+                employees: {
+                    total: employeeTotal,
+                    pending: employeePending,
+                    approved: employeeApproved,
+                    rejected: employeeRejected,
+                },
+            },
+        });
+
+    } catch (error) {
+
+        next(error);
+    }
+};
+
 //controller for creating groups
 exports.createGroup = async (req, res, next) => {
     try {
@@ -794,7 +864,7 @@ exports.getGroupDetails = async (req, res, next) => {
                 group: { ...group, members: undefined }, // Remove raw members list
                 financialSummary: {
                     monthlyPool,
-                    totalExpectedTillNow: currentMonth * totalMembers * monthlyContribution,
+                    totalExpectedTillNow: monthlyPool - totalCollected,
                     totalCollected,
                     currentMonthCollection,
                     totalRotated: winnersCount * monthlyPool,
