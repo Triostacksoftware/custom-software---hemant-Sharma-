@@ -29,7 +29,7 @@ const AdminLayout = ({ children }) => {
             {/* Sidebar */}
             <aside className={`admin-sidebar ${mobileMenuOpen ? 'open' : ''}`}>
                 <div className="sidebar-header">
-                    <h2 className="sidebar-title">ChitFund Admin</h2>
+                    <h2 className="sidebar-title">Kamauti Pro Admin</h2>
                     <button
                         className="mobile-close-btn"
                         onClick={() => setMobileMenuOpen(false)}
