@@ -102,7 +102,7 @@ const Groups = () => {
             <div className="groups-header">
                 <div>
                     <h1 className="groups-title">Group Management</h1>
-                    <p className="groups-subtitle">View and manage all chit fund groups</p>
+                    <p className="groups-subtitle">View and manage all groups</p>
                 </div>
                 <Link to="/admin/create-group" className="create-group-btn">
                     + Create New Group

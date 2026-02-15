@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../api/adminApi';
 import {
-    ArrowLeft,
+    ChevronLeft,
     Calendar,
     Users,
     IndianRupeeIcon,
@@ -11,6 +11,7 @@ import {
     X,
     UserPlus,
     Search,
+    Play,              // <-- NEW: Import Play icon for Activate button
 } from 'lucide-react';
 import './GroupDetails.css';
 
@@ -31,6 +32,9 @@ const GroupDetails = () => {
     const [loadingUsers, setLoadingUsers] = useState(false);
     const [userSearchTerm, setUserSearchTerm] = useState('');
     const [addingUserId, setAddingUserId] = useState(null);
+
+    // Activate group state (NEW)
+    const [activating, setActivating] = useState(false);
 
     useEffect(() => {
         fetchGroupDetails();
@@ -89,6 +93,23 @@ const GroupDetails = () => {
             alert(err.response?.data?.message || 'Failed to add member');
         } finally {
             setAddingUserId(null);
+        }
+    };
+
+    // NEW: Activate group handler
+    const handleActivateGroup = async () => {
+        if (!window.confirm('Are you sure you want to activate this group? This action cannot be undone.')) {
+            return;
+        }
+        setActivating(true);
+        try {
+            await adminApi.groups.activate(groupId);
+            await fetchGroupDetails();
+            setSuccessMessage('Group activated successfully!');
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to activate group');
+        } finally {
+            setActivating(false);
         }
     };
 
@@ -169,19 +190,42 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* Header with back button, title, status, and optional Add Member button */}
+            {/* Header with back button, title, status, and action buttons */}
             <div className="group-details-header">
                 <button className="back-btn" onClick={() => navigate('/admin/groups')}>
-                    <ArrowLeft size={18} />
-                    Back to Groups
+                    <ChevronLeft size={18} />
+                    Back
                 </button>
                 <h1 className="page-title">{group.name}</h1>
                 <div className="header-actions">
                     <span className={getStatusBadgeClass(group.status)}>{group.status}</span>
+
+                    {/* Add Member button (only when DRAFT and not full) */}
                     {isDraft && !isFull && (
                         <button className="add-member-btn" onClick={openAddMemberModal}>
                             <UserPlus size={18} />
                             Add Member
+                        </button>
+                    )}
+
+                    {/* NEW: Activate button (only when DRAFT and full) */}
+                    {isDraft && isFull && (
+                        <button
+                            className="activate-btn"
+                            onClick={handleActivateGroup}
+                            disabled={activating}
+                        >
+                            {activating ? (
+                                <>
+                                    <span className="spinner-small"></span>
+                                    Activating...
+                                </>
+                            ) : (
+                                <>
+                                    <Play size={18} />
+                                    Activate Group
+                                </>
+                            )}
                         </button>
                     )}
                 </div>
@@ -189,6 +233,7 @@ const GroupDetails = () => {
 
             {/* Info Cards */}
             <div className="info-cards">
+                {/* ... (unchanged) */}
                 <div className="info-card">
                     <div className="info-icon"><Calendar size={20} /></div>
                     <div className="info-content">

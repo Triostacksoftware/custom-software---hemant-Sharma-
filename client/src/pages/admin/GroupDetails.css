@@ -453,6 +453,31 @@
     background: #1d4ed8;
 }
 
+/* Activate Group button */
+.activate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.activate-btn:hover:not(:disabled) {
+    background: #059669;
+}
+
+.activate-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* Small spinner for button inside modal */
 .spinner-small {
     display: inline-block;

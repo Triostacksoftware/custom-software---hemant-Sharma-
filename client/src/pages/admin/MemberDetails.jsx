@@ -2,15 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../api/adminApi';
 import {
-    ArrowLeft,
+    ChevronLeft,
     User,
     Phone,
     Calendar,
     IndianRupee,
     Users,
-    CheckCircle,
-    XCircle,
-    Clock,
     Award,
     ChevronRight,
     X
@@ -127,8 +124,8 @@ const MemberDetails = () => {
             {/* Header with back button */}
             <div className="member-details-header">
                 <button className="back-btn" onClick={() => navigate('/admin/members')}>
-                    <ArrowLeft size={18} />
-                    Back to Members
+                    <ChevronLeft size={18} />
+                    Back
                 </button>
                 <h1 className="page-title">Member Details</h1>
                 <div className="member-status-wrapper">
