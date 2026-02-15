@@ -5,12 +5,12 @@ import {
     ArrowLeft,
     Calendar,
     Users,
-    IndianRupee,
+    IndianRupeeIcon,
     Clock,
     Activity,
-    // ChevronDown,
-    // ChevronUp,
-    X
+    X,
+    UserPlus,
+    Search,
 } from 'lucide-react';
 import './GroupDetails.css';
 
@@ -21,8 +21,16 @@ const GroupDetails = () => {
     const [groupData, setGroupData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [selectedMember, setSelectedMember] = useState(null); // for history modal
+    const [selectedMember, setSelectedMember] = useState(null);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
+
+    // Add member modal state
+    const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+    const [availableUsers, setAvailableUsers] = useState([]);
+    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [userSearchTerm, setUserSearchTerm] = useState('');
+    const [addingUserId, setAddingUserId] = useState(null);
 
     useEffect(() => {
         fetchGroupDetails();
@@ -32,6 +40,7 @@ const GroupDetails = () => {
         try {
             setLoading(true);
             setError('');
+            setSuccessMessage('');
             const response = await adminApi.groups.details(groupId);
             setGroupData(response.data.data);
         } catch (err) {
@@ -39,6 +48,47 @@ const GroupDetails = () => {
             console.error('Group details error:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Open modal and fetch eligible users
+    const openAddMemberModal = async () => {
+        setShowAddMemberModal(true);
+        setUserSearchTerm('');
+        setAvailableUsers([]);
+        setLoadingUsers(true);
+        try {
+            // Fetch all approved users (limit 100 for now)
+            const response = await adminApi.users.fetchAll({ limit: 100 });
+            const allUsers = response.data.data.members || [];
+
+            // Get current member IDs
+            const currentMemberIds = members.map(m => m.userId);
+
+            // Filter: approved and not already in group
+            const eligible = allUsers.filter(
+                user => user.approvalStatus === 'APPROVED' && !currentMemberIds.includes(user._id)
+            );
+            setAvailableUsers(eligible);
+        } catch (err) {
+            console.error('Failed to fetch users:', err);
+        } finally {
+            setLoadingUsers(false);
+        }
+    };
+
+    // Add member handler
+    const handleAddMember = async (userId) => {
+        setAddingUserId(userId);
+        try {
+            await adminApi.groups.addMember(groupId, userId);
+            await fetchGroupDetails();               // Refresh group data
+            setSuccessMessage('Member added successfully!');
+            setShowAddMemberModal(false);            // Close modal
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to add member');
+        } finally {
+            setAddingUserId(null);
         }
     };
 
@@ -101,22 +151,43 @@ const GroupDetails = () => {
     if (!groupData) return null;
 
     const { group, financialSummary, members } = groupData;
+    const isDraft = group.status === 'DRAFT';
+    const isFull = members.length === group.totalMembers;
+
+    // Compute filtered users for the add member modal
+    const filteredUsers = availableUsers.filter(user =>
+        user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+        user.phoneNumber.includes(userSearchTerm)
+    );
 
     return (
         <div className="group-details-page">
-            {/* Header with back button */}
+            {/* Success message */}
+            {successMessage && (
+                <div className="success-message">
+                    {successMessage}
+                </div>
+            )}
+
+            {/* Header with back button, title, status, and optional Add Member button */}
             <div className="group-details-header">
                 <button className="back-btn" onClick={() => navigate('/admin/groups')}>
                     <ArrowLeft size={18} />
                     Back to Groups
                 </button>
                 <h1 className="page-title">{group.name}</h1>
-                <div className="group-status-wrapper">
+                <div className="header-actions">
                     <span className={getStatusBadgeClass(group.status)}>{group.status}</span>
+                    {isDraft && !isFull && (
+                        <button className="add-member-btn" onClick={openAddMemberModal}>
+                            <UserPlus size={18} />
+                            Add Member
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Group Info Cards */}
+            {/* Info Cards */}
             <div className="info-cards">
                 <div className="info-card">
                     <div className="info-icon"><Calendar size={20} /></div>
@@ -147,7 +218,7 @@ const GroupDetails = () => {
                     </div>
                 </div>
                 <div className="info-card">
-                    <div className="info-icon"><IndianRupee size={20} /></div>
+                    <div className="info-icon"><IndianRupeeIcon size={20} /></div>
                     <div className="info-content">
                         <span className="info-label">Monthly Contribution</span>
                         <span className="info-value">{formatCurrency(group.monthlyContribution)}</span>
@@ -264,6 +335,67 @@ const GroupDetails = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Member Modal */}
+            {showAddMemberModal && (
+                <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Add Member to {group.name}</h3>
+                            <button className="modal-close" onClick={() => setShowAddMemberModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            {/* Search input */}
+                            <div className="search-wrapper">
+                                <Search size={18} className="search-icon" />
+                                <input
+                                    type="text"
+                                    className="search-input"
+                                    placeholder="Search by name or phone..."
+                                    value={userSearchTerm}
+                                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                                />
+                            </div>
+
+                            {/* User list */}
+                            {loadingUsers ? (
+                                <div className="loading-users">
+                                    <div className="spinner-small"></div>
+                                    <p>Loading users...</p>
+                                </div>
+                            ) : (
+                                <div className="user-list">
+                                    {filteredUsers.length === 0 ? (
+                                        <p className="no-users">No eligible approved users found.</p>
+                                    ) : (
+                                        filteredUsers.map(user => (
+                                            <div key={user._id} className="user-item">
+                                                <div className="user-info">
+                                                    <span className="user-name">{user.name}</span>
+                                                    <span className="user-phone">{user.phoneNumber}</span>
+                                                </div>
+                                                <button
+                                                    className="add-user-btn"
+                                                    onClick={() => handleAddMember(user._id)}
+                                                    disabled={addingUserId === user._id}
+                                                >
+                                                    {addingUserId === user._id ? (
+                                                        <span className="spinner-small"></span>
+                                                    ) : (
+                                                        'Add'
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
