@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const Schema = mongoose.Schema;
 
-const contributionSchema = new Schema({
+const transactionSchema = new Schema({
     groupId: {
         type: Schema.Types.ObjectId,
         ref: "Groups",
@@ -20,10 +20,18 @@ const contributionSchema = new Schema({
     monthNumber: {
         type: Number,
         required: true,
-        min: 1
+        min: 1,
+        index: true
     },
 
-    amountPaid: {
+    type: {
+        type: String,
+        enum: ["CONTRIBUTION", "DIVIDEND", "WINNER_PAYOUT"],
+        required: true,
+        index: true
+    },
+
+    amount: {
         type: Number,
         required: true,
         min: 1
@@ -35,13 +43,13 @@ const contributionSchema = new Schema({
         required: true
     },
 
-    collectedBy: {
+    handledBy: {
         type: Schema.Types.ObjectId,
         ref: "Employee",
         required: true
     },
 
-    collectedAt: {
+    handledAt: {
         type: Date,
         default: Date.now
     },
@@ -49,9 +57,18 @@ const contributionSchema = new Schema({
     remarks: {
         type: String,
         trim: true
+    },
+
+    updatedBy: {
+        type: Schema.Types.ObjectId,
+        ref: "Employee"
     }
 
 }, { timestamps: true });
 
+transactionSchema.index({ groupId: 1, monthNumber: 1 });
+transactionSchema.index({ userId: 1, monthNumber: 1 });
+transactionSchema.index({ type: 1, groupId: 1, monthNumber: 1 });
 
-module.exports = mongoose.model("Contribution", contributionSchema);
+
+module.exports = mongoose.model("Transaction", transactionSchema);
