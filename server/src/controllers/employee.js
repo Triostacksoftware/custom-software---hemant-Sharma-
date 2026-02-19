@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 
 const Employee = require("../models/employee.js");
 const Groups = require("../models/group.js");
-const Contribution = require("../models/contribution.js");
+const Transaction = require("../models/transaction.js");
 const User = require("../models/user.js");
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
@@ -163,15 +163,16 @@ exports.logContribution = async (req, res, next) => {
         }
 
         //create contribution record
-        await Contribution.create({
+        await Transaction.create({
             groupId,
             userId,
             monthNumber,
-            amountPaid,
+            amount: amountPaid,
+            type: "CONTRIBUTION",
             paymentMode,
-            collectedBy: employeeId,
+            handledBy: employeeId,
             remarks,
-            collectedAt
+            handledAt: collectedAt
         });
 
         return res.status(201).json({

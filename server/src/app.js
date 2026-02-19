@@ -7,7 +7,7 @@ const mongoose = require("mongoose");
 const userModel = require("./models/user.js");
 const employeeModel = require("./models/employee.js");
 const groupModel = require("./models/group.js");
-const contributionModel = require("./models/contribution.js");
+const transactionModel = require("./models/transaction.js");
 
 const errorHandler = require("./middleware/error_handler.js");
 

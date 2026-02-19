@@ -6,7 +6,7 @@ const bcrypt = require("bcrypt");
 const Employee = require("../models/employee.js");
 const Groups = require("../models/group.js");
 const User = require("../models/user.js");
-const Contribution = require("../models/contribution.js");
+const Transaction = require("../models/transaction.js");
 
 
 
@@ -860,12 +860,17 @@ exports.getGroupDetails = async (req, res, next) => {
 
         // optimized Aggregation
         // We calculate everything in one trip to the database
-        const aggregatedContributions = await Contribution.aggregate([
-            { $match: { groupId: new mongoose.Types.ObjectId(groupId) } },
+        const aggregatedContributions = await Transaction.aggregate([
+            {
+                $match: {
+                    groupId: new mongoose.Types.ObjectId(groupId),
+                    type: "CONTRIBUTION"
+                }
+            },
             {
                 $lookup: {
                     from: "employees",
-                    localField: "collectedBy",
+                    localField: "handledBy",
                     foreignField: "_id",
                     as: "collector"
                 }
@@ -874,18 +879,18 @@ exports.getGroupDetails = async (req, res, next) => {
             {
                 $group: {
                     _id: "$userId",
-                    totalPaid: { $sum: "$amountPaid" },
+                    totalPaid: { $sum: "$amount" },
                     currentMonthPaid: {
                         $sum: {
-                            $cond: [{ $eq: ["$monthNumber", currentMonth] }, "$amountPaid", 0]
+                            $cond: [{ $eq: ["$monthNumber", currentMonth] }, "$amount", 0]
                         }
                     },
                     contributionHistory: {
                         $push: {
                             monthNumber: "$monthNumber",
-                            amountPaid: "$amountPaid",
+                            amountPaid: "$amount",
                             paymentMode: "$paymentMode",
-                            collectedAt: "$collectedAt",
+                            collectedAt: "$handledAt",
                             collectorName: "$collector.name"
                         }
                     }
@@ -971,12 +976,12 @@ exports.getMemberDetails = async (req, res, next) => {
             User.findById(userId).select("-password").lean(),
 
             //aggregate all contributions of this user across all groups
-            Contribution.aggregate([
+            Transaction.aggregate([
                 { $match: { userId: userObjId } },
                 {
                     $lookup: {
                         from: "employees",
-                        localField: "collectedBy",
+                        localField: "handledBy",
                         foreignField: "_id",
                         as: "collector"
                     },
@@ -985,13 +990,13 @@ exports.getMemberDetails = async (req, res, next) => {
                 {
                     $group: {
                         _id: "$groupId",
-                        totalPaidInGroup: { $sum: "$amountPaid" },
+                        totalPaidInGroup: { $sum: "$amount" },
                         paymentHistory: {
                             $push: {
                                 monthNumber: "$monthNumber",
-                                amountPaid: "$amountPaid",
+                                amountPaid: "$amount",
                                 paymentMode: "$paymentMode",
-                                collectedAt: "$collectedAt",
+                                collectedAt: "$handledAt",
                                 remarks: "$remarks",
                                 collectorName: "$collector.name",
                             },
