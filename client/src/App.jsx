@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { AdminRoute } from './routes';
+import { EmployeeRoute } from './routes';
 import LandingPage from './pages/public/LandingPage';
 import AdminLayout from './components/layout/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
@@ -12,6 +13,10 @@ import Approvals from './pages/admin/Approvals';
 import CreateGroup from './pages/admin/CreateGroup';
 import GroupDetails from './pages/admin/GroupDetails';
 import MemberDetails from './pages/admin/MemberDetails';
+import EmployeeDashboard from './pages/employee/Dashboard';
+import EmployeeLayout from './components/layout/EmployeeLayout';
+import LogContribution from './pages/employee/LogContribution';
+import History from './pages/employee/History';
 
 import './App.css';
 
@@ -100,7 +105,26 @@ function App() {
 
                         {/* Employee Routes (Placeholder) */}
                         <Route path="/employee/dashboard" element={
-                            <div>Employee Dashboard - Coming Soon</div>
+                            <EmployeeRoute allowedRoles={['employee']}>
+                                <EmployeeLayout>
+                                    <EmployeeDashboard />
+                                </EmployeeLayout>
+                            </EmployeeRoute>
+                        } />
+
+                        <Route path="/employee/log-contribution" element={
+                            <EmployeeRoute allowedRoles={['employee']}>
+                                <EmployeeLayout>
+                                    <LogContribution />
+                                </EmployeeLayout>
+                            </EmployeeRoute>
+                        } />
+                        <Route path="/employee/history" element={
+                            <EmployeeRoute allowedRoles={['employee']}>
+                                <EmployeeLayout>
+                                    <History />
+                                </EmployeeLayout>
+                            </EmployeeRoute>
                         } />
 
                         {/* User Routes (Placeholder) */}

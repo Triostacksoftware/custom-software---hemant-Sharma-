@@ -1,6 +1,24 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { authApi } from '../api/authApi';
 
+// Helper to decode JWT token
+const decodeToken = (token) => {
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+            atob(base64)
+                .split('')
+                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+        );
+        return JSON.parse(jsonPayload);
+    } catch (error) {
+        console.error('Token decode error:', error);
+        return null;
+    }
+};
+
 const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
@@ -9,25 +27,22 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         const token = localStorage.getItem('token');
-        if (token) {
-            try {
-                const base64Url = token.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(
-                    atob(base64)
-                        .split('')
-                        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-                        .join('')
-                );
+        const role = localStorage.getItem('userRole'); // Retrieve stored role
 
-                const decodedUser = JSON.parse(jsonPayload);
-                if (decodedUser.exp * 1000 > Date.now()) {
-                    setUser({ token, ...decodedUser });
-                } else {
-                    localStorage.removeItem('token');
-                }
-            } catch (error) {
+        if (token && role) {
+            const decoded = decodeToken(token);
+            if (decoded && decoded.exp * 1000 > Date.now()) {
+                setUser({
+                    token,
+                    role,
+                    name: decoded.name,
+                    employeeId: decoded.employeeId,
+                });
+            } else {
+                // Token expired or invalid – clear storage
                 localStorage.removeItem('token');
+                localStorage.removeItem('userRole');
+                localStorage.removeItem('userName');
             }
         }
         setLoading(false);
@@ -58,34 +73,31 @@ export const AuthProvider = ({ children }) => {
             }
 
             const token = data.token;
+            const decoded = decodeToken(token);
+
+            // Store token and role separately
             localStorage.setItem('token', token);
+            localStorage.setItem('userRole', role);
+            if (decoded?.name) {
+                localStorage.setItem('userName', decoded.name);
+            }
 
-            // Decode token to get user info
-            const base64Url = token.split('.')[1];
-            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            const jsonPayload = decodeURIComponent(
-                atob(base64)
-                    .split('')
-                    .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-                    .join('')
-            );
-
-            const decodedUser = JSON.parse(jsonPayload);
-            setUser({ token, role, ...decodedUser });
+            setUser({
+                token,
+                role,
+                name: decoded?.name,
+                employeeId: decoded?.employeeId,
+            });
 
             return { success: true, data };
         } catch (error) {
-            // Extract error message from response if available
             const errorMessage =
                 error.response?.data?.message ||
                 error.response?.data?.error ||
                 error.message ||
                 'Login failed';
 
-            return {
-                success: false,
-                error: errorMessage
-            };
+            return { success: false, error: errorMessage };
         }
     };
 
@@ -107,20 +119,22 @@ export const AuthProvider = ({ children }) => {
             const { data } = response;
 
             if (!data.success) {
-                throw new Error(data.error || 'Signup failed');
+                throw new Error(data.error || data.message || 'Signup failed');
             }
 
             return { success: true, data };
         } catch (error) {
             return {
                 success: false,
-                error: error.response?.data?.error || error.message || 'Signup failed'
+                error: error.response?.data?.error || error.response?.data?.message || error.message || 'Signup failed'
             };
         }
     };
 
     const logout = () => {
         localStorage.removeItem('token');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
         setUser(null);
         window.location.href = '/';
     };

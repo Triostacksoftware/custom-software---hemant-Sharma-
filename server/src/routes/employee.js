@@ -13,5 +13,14 @@ router.post('/employee/login/', employeeController.employeeLogin);
 //endpoint to log monthly contribution
 router.post('/employee/group/contribution/log_contribution/', authentication.authenticate, employeeController.logContribution);
 
+//endpoint to fetch employee dashboard
+router.get('/employee/dashboard/', authentication.authenticate, employeeController.getEmployeeDashboard);
+
+//endpoint to get the list of active groups
+router.get('/employee/groups/active', authentication.authenticate, employeeController.getActiveGroups);
+
+//endpoint to fetch members whose contribution is pending
+router.get('/employee/groups/:groupId/pending_members/', authentication.authenticate, employeeController.getContributionPendingMembers);
+
 
 module.exports = router;
