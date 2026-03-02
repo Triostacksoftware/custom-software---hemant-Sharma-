@@ -35,18 +35,15 @@ const groupSchema = new Schema({
         winningMonth: {
             type: Number,
         },
-        totalPaid: {
-            type: Number,
-            default: 0,
-        },
-        totalReceived: {
-            type: Number,
-            default: 0,
-        },
         status: {
             type: String,
             enum: ["ACTIVE", "DEFAULTED"],
             default: "ACTIVE",
+        },
+        currentPaymentStatus: {
+            type: String,
+            enum: ["PENDING", "PARTIAL", "PAID", "OVERDUE"],
+            default: "PENDING"
         }
     }],
 

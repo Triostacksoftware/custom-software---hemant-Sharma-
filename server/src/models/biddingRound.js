@@ -15,7 +15,7 @@ const biddingRoundSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ["PENDING", "OPEN", "CLOSED", "FINALIZED"],
+        enum: ["PENDING", "OPEN", "CLOSED", "PAYMENT_OPEN", "COLLECTION_DONE", "FINALIZED"],
         default: "PENDING",
         index: true,
     },
@@ -37,9 +37,13 @@ const biddingRoundSchema = new Schema({
         type: Number,
         default: 0,
     },
-    payoutAmount: {
+    payablePerMember: {
         type: Number,
-        default: 0,
+        default: 0
+    },
+
+    paymentDeadline: {
+        type: Date
     },
     startedAt: Date,
     endedAt: Date,

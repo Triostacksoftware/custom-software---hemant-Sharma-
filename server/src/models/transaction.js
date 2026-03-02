@@ -17,6 +17,13 @@ const transactionSchema = new Schema({
         index: true,
     },
 
+    biddingRoundId: {
+        type: Schema.Types.ObjectId,
+        ref: "BiddingRound",
+        required: true,
+        index: true
+    },
+
     monthNumber: {
         type: Number,
         required: true,
@@ -26,7 +33,7 @@ const transactionSchema = new Schema({
 
     type: {
         type: String,
-        enum: ["CONTRIBUTION", "DIVIDEND", "WINNER_PAYOUT"],
+        enum: ["CONTRIBUTION", "WINNER_PAYOUT"],
         required: true,
         index: true
     },
