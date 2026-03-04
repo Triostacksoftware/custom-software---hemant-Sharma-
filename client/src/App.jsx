@@ -17,6 +17,9 @@ import EmployeeDashboard from './pages/employee/Dashboard';
 import EmployeeLayout from './components/layout/EmployeeLayout';
 import LogContribution from './pages/employee/LogContribution';
 import History from './pages/employee/History';
+import MemberRoute from './routes/MemberRoute';
+import MemberLayout from './components/layout/MemberLayout';
+import MemberDashboard from './pages/member/Dashboard';
 
 import './App.css';
 
@@ -129,7 +132,11 @@ function App() {
 
                         {/* User Routes (Placeholder) */}
                         <Route path="/user/dashboard" element={
-                            <div>User Dashboard - Coming Soon</div>
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <MemberDashboard />
+                                </MemberLayout>
+                            </MemberRoute>
                         } />
 
                         <Route path="*" element={<Navigate to="/" replace />} />

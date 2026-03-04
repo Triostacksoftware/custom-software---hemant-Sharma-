@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const Employee = require("../models/employee.js");
+const Member = require("../models/user.js");
 
 
 
@@ -56,4 +57,42 @@ exports.isAdmin = (req, res, next) => {
     }
 
     next();
+};
+
+
+//jwt authentication for members
+exports.isMember = async (req, res, next) => {
+    try {
+
+        const authHeader = req.headers.authorization;   //grab token from header
+        //validate token
+        if (!authHeader) {
+            return res.status(401).json({ error: "Authorization token missing" });
+
+        }
+        const token = authHeader.split(" ")[1];
+
+        //verify token
+        const tokenDecoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        //fetch employee from db
+        const member = await Member.findById(tokenDecoded.userId);
+
+        if (!member) {
+            return res.status(401).json({ error: "Invalid token user" });
+        }
+
+        //approval check
+        if (member.approvalStatus !== "APPROVED") {
+            return res.status(403).json({ error: "Account not approved" });
+        }
+
+        req.user = member;
+
+        next();
+
+    } catch (error) {
+        console.log("Authentication error: ", error);
+        res.status(401).json({ error: "Authentication failed" });
+    }
 };

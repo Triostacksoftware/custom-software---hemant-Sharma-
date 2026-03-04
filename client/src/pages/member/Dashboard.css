@@ -1,0 +1,38 @@
+.member-dashboard .page-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 0.25rem 0;
+    letter-spacing: -0.5px;
+}
+
+.member-dashboard .page-subtitle {
+    color: #64748b;
+    font-size: 1rem;
+    margin-bottom: 2rem;
+}
+
+.placeholder-content {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    color: #334155;
+}
+
+.placeholder-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+}
+
+.placeholder-content li {
+    margin: 0.5rem 0;
+}
+
+.coming-soon {
+    margin-top: 2rem;
+    font-style: italic;
+    color: #64748b;
+}

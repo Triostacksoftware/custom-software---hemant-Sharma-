@@ -33,6 +33,10 @@ const biddingRoundSchema = new Schema({
         type: Number,
         default: 0,
     },
+    winnerReceivableAmount: {
+        type: Number,
+        default: 0
+    },
     dividendPerMember: {
         type: Number,
         default: 0,
@@ -41,7 +45,6 @@ const biddingRoundSchema = new Schema({
         type: Number,
         default: 0
     },
-
     paymentDeadline: {
         type: Date
     },

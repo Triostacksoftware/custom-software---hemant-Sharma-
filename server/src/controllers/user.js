@@ -2,6 +2,10 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 const User = require("../models/user.js");
+const BiddingRound = require("../models/biddingRound.js");
+const Bid = require("../models/bid.js");
+const Groups = require("../models/group.js");
+
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
@@ -87,3 +91,134 @@ exports.userLogin = async (req, res, next) => {
 
     }
 };
+
+
+//controller to place bid
+exports.placeBid = async (req, res, next) => {
+    try {
+        const { biddingRoundId, bidAmount } = req.body;
+        const userId = req.user._id;
+
+        if (!biddingRoundId || bidAmount === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding round ID and bid amount are required"
+            });
+        }
+
+        // Fetch bidding round
+        const round = await BiddingRound.findById(biddingRoundId);
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        // Ensure round is OPEN
+        if (round.status !== "OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding is not open"
+            });
+        }
+
+        const now = new Date();
+
+        //Auto close if expired
+        if (now > round.endedAt) {
+
+            // Close round
+            round.status = "CLOSED";
+            await round.save();
+
+            const io = req.app.get("io");
+            io.to(biddingRoundId.toString()).emit("biddingClosed", {
+                message: "Bidding time expired"
+            });
+
+            return res.status(400).json({
+                success: false,
+                message: "Bidding time has expired"
+            });
+        }
+
+        //user cannot bid if already won in this group
+        const previousWin = await BiddingRound.findOne({
+            groupId: round.groupId,
+            winnerUserId: userId
+        });
+
+        if (previousWin) {
+            return res.status(403).json({
+                success: false,
+                message: "You have already won in this group and cannot bid again"
+            });
+        }
+
+        // Validate bid range (10% - 20%)
+        const minBid = round.totalPoolAmount * 0.10;
+        const maxBid = round.totalPoolAmount * 0.20;
+
+        if (bidAmount < minBid || bidAmount > maxBid) {
+            return res.status(400).json({
+                success: false,
+                message: `Bid must be between ${minBid} and ${maxBid}`
+            });
+        }
+
+        // Check if user already placed a bid
+        const existingBid = await Bid.findOne({
+            biddingRoundId,
+            userId
+        });
+
+        if (existingBid && bidAmount <= existingBid.bidAmount) {
+            return res.status(400).json({
+                success: false,
+                message: "New bid must be higher than your previous bid"
+            });
+        }
+
+        // Upsert bid
+        const updatedBid = await Bid.findOneAndUpdate(
+            { biddingRoundId, userId },
+            {
+                biddingRoundId,
+                groupId: round.groupId,
+                monthNumber: round.monthNumber,
+                userId,
+                bidAmount
+            },
+            {
+                new: true,
+                upsert: true,
+                runValidators: true
+            }
+        ).populate("userId", "name");
+
+        // Emit real-time update
+        const io = req.app.get("io");
+
+        io.to(biddingRoundId.toString()).emit("newBidPlaced", {
+            userId: updatedBid.userId._id,
+            name: updatedBid.userId.name,
+            bidAmount: updatedBid.bidAmount,
+            timestamp: updatedBid.updatedAt
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Bid placed successfully",
+            data: {
+                bidAmount: updatedBid.bidAmount
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+

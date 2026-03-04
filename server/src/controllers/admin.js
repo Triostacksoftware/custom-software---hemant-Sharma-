@@ -7,6 +7,8 @@ const Employee = require("../models/employee.js");
 const Groups = require("../models/group.js");
 const User = require("../models/user.js");
 const Transaction = require("../models/transaction.js");
+const BiddingRound = require("../models/biddingRound.js");
+const Bid = require("../models/bid.js");
 
 
 
@@ -1059,5 +1061,361 @@ exports.getMemberDetails = async (req, res, next) => {
     } catch (error) {
         next(error);
 
+    }
+};
+
+
+//controller to open bidding
+exports.openBidding = async (req, res, next) => {
+    try {
+        const { groupId } = req.body;
+
+        if (!groupId) {
+            return res.status(400).json({
+                success: false,
+                message: "Group ID is required"
+            });
+        }
+
+        // Fetch group
+        const group = await Groups.findById(groupId);
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        if (group.status !== "ACTIVE") {
+            return res.status(400).json({
+                success: false,
+                message: "Group is not active"
+            });
+        }
+
+        if (group.currentMonth > group.totalMonths) {
+            return res.status(400).json({
+                success: false,
+                message: "All months are already completed"
+            });
+        }
+
+        //ensure no OPEN round exists
+        const openRoundExists = await BiddingRound.findOne({
+            groupId,
+            status: "OPEN"
+        });
+
+        if (openRoundExists) {
+            return res.status(400).json({
+                success: false,
+                message: "A bidding round is already open for this group"
+            });
+        }
+
+        // Check if this month round already exists
+        const existingRound = await BiddingRound.findOne({
+            groupId,
+            monthNumber: group.currentMonth
+        });
+
+        if (existingRound) {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding already done for this month"
+            });
+        }
+
+        const totalPoolAmount =
+            group.totalMembers * group.monthlyContribution;
+
+        const now = new Date();
+        const twoHoursLater = new Date(
+            now.getTime() + 2 * 60 * 60 * 1000
+        );
+
+        // Create bidding round
+        const biddingRound = await BiddingRound.create({
+            groupId,
+            monthNumber: group.currentMonth,
+            totalPoolAmount,
+            status: "OPEN",
+            startedAt: now,
+            endedAt: twoHoursLater
+        });
+
+        //Emit socket event
+        const io = req.app.get("io");
+
+        io.to(biddingRound._id.toString()).emit("biddingOpened", {
+            biddingRoundId: biddingRound._id,
+            monthNumber: biddingRound.monthNumber,
+            endsAt: biddingRound.endedAt
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Bidding opened successfully",
+            data: {
+                biddingRoundId: biddingRound._id,
+                monthNumber: biddingRound.monthNumber,
+                endsAt: biddingRound.endedAt
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to close bidding
+exports.closeBidding = async (req, res, next) => {
+    try {
+        const { biddingRoundId } = req.body;
+
+        if (!biddingRoundId) {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding round ID is required"
+            });
+        }
+
+        const round = await BiddingRound.findById(biddingRoundId);
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        if (round.status !== "OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding is not open or already closed"
+            });
+        }
+
+        // Fetch all bids sorted in descending order
+        const bids = await Bid.find({ biddingRoundId })
+            .sort({ bidAmount: -1 })
+            .populate("userId", "name");
+
+        if (bids.length === 0) {
+            round.status = "CLOSED";
+            await round.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "Bidding closed. No bids were placed."
+            });
+        }
+
+        const highestBidAmount = bids[0].bidAmount;
+
+        // Get all users with highest bid
+        const highestBidders = bids.filter(
+            bid => bid.bidAmount === highestBidAmount
+        );
+
+        // TIE CASE
+        if (highestBidders.length > 1) {
+
+            round.status = "CLOSED";
+            await round.save();
+
+            return res.status(200).json({
+                success: true,
+                tie: true,
+                message: "Tie detected. Admin must select winner.",
+                tiedUsers: highestBidders.map(bid => ({
+                    userId: bid.userId._id,
+                    name: bid.userId.name,
+                    bidAmount: bid.bidAmount
+                }))
+            });
+        }
+
+        // Single Winner Case
+        const winnerBid = highestBidders[0];
+        const group = await Groups.findById(round.groupId);
+
+        const totalMembers = group.totalMembers;
+        const totalPool = round.totalPoolAmount;
+
+        const winningBidAmount = winnerBid.bidAmount;
+
+        // Calculate contribution and payout financials
+        const dividendPerMember = winningBidAmount / totalMembers;
+        const payablePerMember = group.monthlyContribution - dividendPerMember;
+        const winnerReceivableAmount = totalPool - winningBidAmount;
+
+        // Update round
+        round.status = "CLOSED";
+        round.winnerUserId = winnerBid.userId._id;
+        round.winningBidAmount = winningBidAmount;
+        round.dividendPerMember = dividendPerMember;
+        round.payablePerMember = payablePerMember;
+        round.winnerReceivableAmount = winnerReceivableAmount;
+        round.finalizedAt = new Date();
+
+        await round.save();
+
+        // Emit result
+        const io = req.app.get("io");
+
+        io.to(biddingRoundId.toString()).emit("biddingClosed", {
+            winnerUserId: winnerBid.userId._id,
+            winnerName: winnerBid.userId.name,
+            winningBidAmount,
+            winnerReceivableAmount,
+            dividendPerMember,
+            payablePerMember,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Bidding closed successfully",
+            data: {
+                winnerUserId: winnerBid.userId._id,
+                winnerName: winnerBid.userId.name,
+                winningBidAmount,
+                winnerReceivableAmount,
+                dividendPerMember,
+                payablePerMember
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to resolve tie
+exports.resolveTie = async (req, res, next) => {
+    try {
+        const { biddingRoundId, winnerUserId } = req.body;
+
+        if (!biddingRoundId || !winnerUserId) {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding round ID and winner user ID are required"
+            });
+        }
+
+        const round = await BiddingRound.findById(biddingRoundId);
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        // Ensure round is CLOSED but winner not yet decided
+        if (round.status !== "CLOSED" || round.winnerUserId) {
+            return res.status(400).json({
+                success: false,
+                message: "Tie resolution not allowed for this round"
+            });
+        }
+
+        // Fetch all bids sorted descending
+        const bids = await Bid.find({ biddingRoundId })
+            .sort({ bidAmount: -1 })
+            .populate("userId", "name");
+
+        if (bids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "No bids found for this round"
+            });
+        }
+
+        const highestBidAmount = bids[0].bidAmount;
+
+        // Filter highest bidders
+        const highestBidders = bids.filter(
+            bid => bid.bidAmount === highestBidAmount
+        );
+
+        if (highestBidders.length <= 1) {
+            return res.status(400).json({
+                success: false,
+                message: "No tie exists for this round"
+            });
+        }
+
+        // Check selected winner is among tied users
+        const selectedWinner = highestBidders.find(
+            bid => bid.userId._id.toString() === winnerUserId
+        );
+
+        if (!selectedWinner) {
+            return res.status(400).json({
+                success: false,
+                message: "Selected user is not among tied highest bidders"
+            });
+        }
+
+        // Fetch group
+        const group = await Groups.findById(round.groupId);
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Associated group not found"
+            });
+        }
+
+        const totalMembers = group.totalMembers;
+        const totalPool = round.totalPoolAmount;
+        const winningBidAmount = highestBidAmount;
+
+        //Financial calculations
+        const winnerReceivableAmount = totalPool - winningBidAmount;
+        const dividendPerMember = winningBidAmount / totalMembers;
+        const payablePerMember = group.monthlyContribution - dividendPerMember;
+
+        //Update round
+        round.winnerUserId = selectedWinner.userId._id;
+        round.winningBidAmount = winningBidAmount;
+        round.winnerReceivableAmount = winnerReceivableAmount;
+        round.dividendPerMember = dividendPerMember;
+        round.payablePerMember = payablePerMember;
+        round.finalizedAt = new Date();
+
+        await round.save();
+
+        // Emit final result
+        const io = req.app.get("io");
+
+        io.to(biddingRoundId.toString()).emit("biddingClosed", {
+            winnerUserId: selectedWinner.userId._id,
+            winnerName: selectedWinner.userId.name,
+            winningBidAmount,
+            winnerReceivableAmount,
+            dividendPerMember,
+            payablePerMember
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Tie resolved successfully",
+            data: {
+                winnerUserId: selectedWinner.userId._id,
+                winnerName: selectedWinner.userId.name,
+                winningBidAmount,
+                winnerReceivableAmount,
+                dividendPerMember,
+                payablePerMember
+            }
+        });
+
+    } catch (error) {
+        next(error);
     }
 };

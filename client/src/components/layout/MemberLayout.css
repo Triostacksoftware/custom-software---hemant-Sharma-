@@ -1,0 +1,156 @@
+.member-layout {
+    min-height: 100vh;
+    background: #f8fafc;
+}
+
+.member-header {
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 1rem 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.mobile-menu-btn:hover {
+    background: #f1f5f9;
+}
+
+.app-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.user-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+.logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.logout-btn:hover {
+    background: #fee2e2;
+}
+
+.mobile-nav {
+    display: none;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 1rem;
+}
+
+.mobile-nav nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.mobile-nav nav li button {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: none;
+    border: none;
+    color: #334155;
+    font-size: 1rem;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.mobile-nav nav li button:hover {
+    background: #f1f5f9;
+}
+
+.member-main {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 2rem;
+}
+
+.member-content {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 2rem;
+    min-height: 500px;
+}
+
+@media (max-width: 768px) {
+    .member-header {
+        padding: 1rem;
+    }
+
+    .app-title {
+        font-size: 1.25rem;
+    }
+
+    .mobile-menu-btn {
+        display: block;
+    }
+
+    .logout-text {
+        display: none;
+    }
+
+    .member-main {
+        padding: 0 1rem;
+    }
+
+    .member-content {
+        padding: 1.5rem;
+    }
+
+    .mobile-nav {
+        display: block;
+    }
+}
