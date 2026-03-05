@@ -222,3 +222,197 @@ exports.placeBid = async (req, res, next) => {
 };
 
 
+//controller to confirm transaction (contribution and payout both)
+exports.confirmTransaction = async (req, res, next) => {
+    try {
+
+        const { groupId, biddingRoundId, monthNumber, amount, type } = req.body;
+
+        const userId = req.user._id;
+
+        //basic validation
+        if (!groupId || !monthNumber || !amount || !type) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields"
+            });
+        }
+
+        //object validation
+        if (!mongoose.Types.ObjectId.isValid(biddingRoundId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid biddingRoundId"
+            });
+        }
+
+        if (amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Amount must be greater than 0"
+            });
+        }
+
+        //validate transaction type
+        if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid transaction type"
+            });
+        }
+
+        //validate ObjectId
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid groupId"
+            });
+        }
+
+        //fetch group
+        const group = await Groups.findById(groupId);
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        if (group.status !== "ACTIVE") {
+            return res.status(400).json({
+                success: false,
+                message: "Group not active"
+            });
+        }
+
+        //check membership
+        const member = group.members.find(
+            m => m.userId.toString() === userId.toString()
+        );
+
+        if (!member) {
+            return res.status(403).json({
+                success: false,
+                message: "User not member of this group"
+            });
+        }
+
+        //fetch bidding round
+        const round = await BiddingRound.findById(biddingRoundId);
+        // const round = await BiddingRound.findOne({
+        //     groupId,
+        //     monthNumber
+        // });
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        if (round.status !== "PAYMENT_OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Payments not open yet"
+            });
+        }
+
+        if (round.groupId.toString() !== groupId || round.monthNumber !== monthNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Round does not belong to this group/month"
+            });
+        }
+
+        //CONTRIBUTION validation
+        if (type === "CONTRIBUTION") {
+
+            if (round.winnerUserId.toString() === userId.toString()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Winner does not pay contribution"
+                });
+            }
+
+            //existing confirmed + completed contributions
+            const previousTransactions = await Transaction.find({
+                groupId,
+                userId,
+                monthNumber,
+                type: "CONTRIBUTION",
+                status: { $in: ["USER_CONFIRMED", "COMPLETED"] }
+            }).select("amount").lean();
+
+            const total = previousTransactions.reduce(
+                (sum, t) => sum + t.amount,
+                0
+            );
+
+            if (total + amount > round.payablePerMember) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Contribution exceeds limit. Current: ${total}/${round.payablePerMember}`
+                });
+            }
+
+        }
+
+        //WINNER PAYOUT validation
+        if (type === "WINNER_PAYOUT") {
+
+            if (round.winnerUserId.toString() !== userId.toString()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Only winner receives payout"
+                });
+            }
+
+            const winnerReceivable =
+                round.totalPoolAmount - round.winningBidAmount;
+
+            const previousPayouts = await Transaction.find({
+                groupId,
+                userId,
+                monthNumber,
+                type: "WINNER_PAYOUT",
+                status: { $in: ["USER_CONFIRMED", "COMPLETED"] }
+            }).select("amount").lean();
+
+            const total = previousPayouts.reduce(
+                (sum, t) => sum + t.amount,
+                0
+            );
+
+            if (total + amount > winnerReceivable) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Payout exceeds receivable amount. Current: ${total}/${winnerReceivable}`
+                });
+            }
+
+        }
+
+        //create confirmation transaction
+        await Transaction.create({
+            groupId,
+            userId,
+            biddingRoundId,
+            monthNumber,
+            amount,
+            type,
+            status: "USER_CONFIRMED"
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Transaction confirmation recorded"
+        });
+
+    } catch (error) {
+
+        next(error);
+
+    }
+};

@@ -69,6 +69,12 @@ const transactionSchema = new Schema({
     updatedBy: {
         type: Schema.Types.ObjectId,
         ref: "Employee"
+    },
+
+    status: {
+        type: String,
+        enum: ["USER_CONFIRMED", "COMPLETED", "CANCELLED"],
+        default: "USER_CONFIRMED"
     }
 
 }, { timestamps: true });

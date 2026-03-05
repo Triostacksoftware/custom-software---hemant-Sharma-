@@ -93,30 +93,38 @@ exports.employeeLogin = async (req, res, next) => {
 };
 
 
-//controller to log contributions of members
-exports.logContribution = async (req, res, next) => {
+//controller to log transaction of members
+exports.logTransaction = async (req, res, next) => {
     try {
 
-        const { groupId, userId, monthNumber, amountPaid, paymentMode, remarks, collectedAt } = req.body;
+        const { groupId, userId, monthNumber, amount, paymentMode, remarks, handledAt, type } = req.body;
 
-        const employeeId = req.employee._id; // from JWT
+        const employeeId = req.employee._id;
 
         //basic validation
-        if (!groupId || !userId || !monthNumber || !amountPaid || !paymentMode) {
+        if (!groupId || !userId || !monthNumber || !amount || !paymentMode || !type) {
             return res.status(400).json({
                 success: false,
                 message: "Missing required fields"
             });
         }
 
-        if (amountPaid <= 0) {
+        if (amount <= 0) {
             return res.status(400).json({
                 success: false,
-                message: "Contribution amount must be greater than 0"
+                message: "Amount must be greater than 0"
             });
         }
 
-        //validate ObjectIds
+        //validate transaction type
+        if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid transaction type"
+            });
+        }
+
+        //validate object Ids
         if (!mongoose.Types.ObjectId.isValid(groupId) || !mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({
                 success: false,
@@ -124,8 +132,9 @@ exports.logContribution = async (req, res, next) => {
             });
         }
 
-        //fetch group
+        //fetch groups
         const group = await Groups.findById(groupId);
+
         if (!group) {
             return res.status(404).json({
                 success: false,
@@ -133,15 +142,14 @@ exports.logContribution = async (req, res, next) => {
             });
         }
 
-        //group must be ACTIVE
         if (group.status !== "ACTIVE") {
             return res.status(400).json({
                 success: false,
-                message: "Contributions allowed only for ACTIVE groups"
+                message: "Transactions allowed only for ACTIVE groups"
             });
         }
 
-        //month validation
+        //validate month
         if (monthNumber !== group.currentMonth) {
             return res.status(400).json({
                 success: false,
@@ -149,8 +157,9 @@ exports.logContribution = async (req, res, next) => {
             });
         }
 
-        //check user's existence
+        //fetch user
         const user = await User.findById(userId);
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -158,55 +167,141 @@ exports.logContribution = async (req, res, next) => {
             });
         }
 
-        //check member exists in group
-        const isMember = group.members.some(
-            member => member.userId.toString() === userId
+        //check member existence in group
+        const member = group.members.find(
+            m => m.userId.toString() === userId
         );
 
-        if (!isMember) {
+        if (!member) {
             return res.status(403).json({
                 success: false,
                 message: "User is not a member of this group"
             });
         }
 
-        // handling the edge case - if the total contribution of a member is > monthly contribution limit
-        const userTransactions = await Transaction.find({
+
+        //fetch bidding round
+        //Ensure transactions allowed only after bidding
+        const round = await BiddingRound.findOne({
             groupId,
-            userId,
-            monthNumber,
-            type: "CONTRIBUTION"
-        }).select("amount").lean();
+            monthNumber
+        });
 
-        const existingTotal = userTransactions.reduce((sum, t) => sum + t.amount, 0);
-
-        if (existingTotal + amountPaid > group.monthlyContribution) {
-            return res.status(400).json({
+        if (!round) {
+            return res.status(404).json({
                 success: false,
-                message: `Limit exceeded. Paid: ${existingTotal}/${group.monthlyContribution}`
+                message: "Bidding round not found"
             });
         }
 
-        //create contribution record
-        await Transaction.create({
+        if (round.status !== "PAYMENT_OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Transactions allowed only during PAYMENT_OPEN stage"
+            });
+        }
+
+        //Contribution logic
+        if (type === "CONTRIBUTION") {
+
+            // Winner should not pay contribution
+            if (round.winnerUserId.toString() === userId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Winner does not pay contribution"
+                });
+            }
+
+            // Fetch previous contributions
+            const userTransactions = await Transaction.find({
+                groupId,
+                userId,
+                monthNumber,
+                type: "CONTRIBUTION"
+            }).select("amount").lean();
+
+            const existingTotal = userTransactions.reduce(
+                (sum, t) => sum + t.amount,
+                0
+            );
+
+            // Validate contribution limit
+            if (existingTotal + amount > round.payablePerMember) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Contribution limit exceeded. Paid: ${existingTotal}/${round.payablePerMember}`
+                });
+            }
+
+        }
+
+        //Winner Payout logic
+        if (type === "WINNER_PAYOUT") {
+
+            // Only winner can receive payout
+            if (round.winnerUserId.toString() !== userId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Payout can only be made to the winner"
+                });
+            }
+
+            const existingPayouts = await Transaction.find({
+                groupId,
+                userId,
+                monthNumber,
+                type: "WINNER_PAYOUT"
+            }).select("amount").lean();
+
+            const totalPaid = existingPayouts.reduce(
+                (sum, t) => sum + t.amount,
+                0
+            );
+
+            const winnerReceivableAmount =
+                round.totalPoolAmount - round.winningBidAmount;
+
+            if (totalPaid + amount > winnerReceivableAmount) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Winner payout exceeds receivable amount. Paid: ${totalPaid}/${winnerReceivableAmount}`
+                });
+            }
+
+        }
+
+        //verify user confirmation
+        const pendingTransaction = await Transaction.findOne({
             groupId,
             userId,
             monthNumber,
-            amount: amountPaid,
-            type: "CONTRIBUTION",
-            paymentMode,
-            handledBy: employeeId,
-            remarks,
-            handledAt: collectedAt
+            amount,
+            type,
+            status: "USER_CONFIRMED"
         });
+
+        if (!pendingTransaction) {
+            return res.status(400).json({
+                success: false,
+                message: "User has not confirmed this transaction"
+            });
+        }
+
+        //update transaction after employee verification
+        pendingTransaction.paymentMode = paymentMode;
+        pendingTransaction.handledBy = employeeId;
+        pendingTransaction.handledAt = handledAt || new Date();
+        pendingTransaction.remarks = remarks;
+        pendingTransaction.status = "COMPLETED";
+
+        await pendingTransaction.save();
 
         return res.status(201).json({
             success: true,
-            message: "Contribution logged successfully"
+            message: "Transaction logged successfully"
         });
 
     } catch (error) {
-
         next(error);
 
     }
@@ -217,7 +312,7 @@ exports.logContribution = async (req, res, next) => {
 exports.getEmployeeDashboard = async (req, res, next) => {
     try {
 
-        // 1️⃣ Fetch all ACTIVE groups
+        //Fetch all ACTIVE groups
         const activeGroups = await Groups.find({ status: "ACTIVE" }).lean();
 
         if (!activeGroups.length) {
@@ -235,7 +330,7 @@ exports.getEmployeeDashboard = async (req, res, next) => {
 
         const groupIds = activeGroups.map(g => g._id);
 
-        // 2️⃣ Aggregate current month contributions per group
+        //Aggregate current month contributions per group
         const contributionAgg = await Transaction.aggregate([
             {
                 $match: {
@@ -265,7 +360,7 @@ exports.getEmployeeDashboard = async (req, res, next) => {
             };
         });
 
-        // 3️⃣ Fetch bidding rounds for current months
+        //Fetch bidding rounds for current months
         const biddingRounds = await BiddingRound.find({
             groupId: { $in: groupIds }
         }).lean();

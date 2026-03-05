@@ -1220,7 +1220,7 @@ exports.closeBidding = async (req, res, next) => {
             bid => bid.bidAmount === highestBidAmount
         );
 
-        // TIE CASE
+        //Tie case
         if (highestBidders.length > 1) {
 
             round.status = "CLOSED";
@@ -1238,13 +1238,20 @@ exports.closeBidding = async (req, res, next) => {
             });
         }
 
-        // Single Winner Case
+        //single winner case
         const winnerBid = highestBidders[0];
+
         const group = await Groups.findById(round.groupId);
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Associated group not found"
+            });
+        }
 
         const totalMembers = group.totalMembers;
         const totalPool = round.totalPoolAmount;
-
         const winningBidAmount = winnerBid.bidAmount;
 
         // Calculate contribution and payout financials
@@ -1252,8 +1259,8 @@ exports.closeBidding = async (req, res, next) => {
         const payablePerMember = group.monthlyContribution - dividendPerMember;
         const winnerReceivableAmount = totalPool - winningBidAmount;
 
-        // Update round
-        round.status = "CLOSED";
+        //update round
+        round.status = "PAYMENT_OPEN";
         round.winnerUserId = winnerBid.userId._id;
         round.winningBidAmount = winningBidAmount;
         round.dividendPerMember = dividendPerMember;
@@ -1263,7 +1270,32 @@ exports.closeBidding = async (req, res, next) => {
 
         await round.save();
 
-        // Emit result
+        // update winner in group.members
+        await Groups.updateOne(
+            { _id: group._id, "members.userId": winnerBid.userId._id },
+            {
+                $set: {
+                    "members.$.hasWon": true,
+                    "members.$.winningMonth": round.monthNumber,
+                    "members.$.currentPaymentStatus": "PAID"
+                }
+            }
+        );
+
+        //Set all other members to PENDING
+        await Groups.updateOne(
+            { _id: group._id },
+            {
+                $set: {
+                    "members.$[elem].currentPaymentStatus": "PENDING"
+                }
+            },
+            {
+                arrayFilters: [{ "elem.userId": { $ne: winnerBid.userId._id } }]
+            }
+        );
+
+        //emit final results
         const io = req.app.get("io");
 
         io.to(biddingRoundId.toString()).emit("biddingClosed", {
@@ -1381,6 +1413,7 @@ exports.resolveTie = async (req, res, next) => {
         const payablePerMember = group.monthlyContribution - dividendPerMember;
 
         //Update round
+        round.status = "PAYMENT_OPEN";
         round.winnerUserId = selectedWinner.userId._id;
         round.winningBidAmount = winningBidAmount;
         round.winnerReceivableAmount = winnerReceivableAmount;
@@ -1389,6 +1422,31 @@ exports.resolveTie = async (req, res, next) => {
         round.finalizedAt = new Date();
 
         await round.save();
+
+        //Update winner in group.members
+        await Groups.updateOne(
+            { _id: group._id, "members.userId": selectedWinner.userId._id },
+            {
+                $set: {
+                    "members.$.hasWon": true,
+                    "members.$.winningMonth": round.monthNumber,
+                    "members.$.currentPaymentStatus": "PAID"
+                }
+            }
+        );
+
+        //Set others to PENDING
+        await Groups.updateOne(
+            { _id: group._id },
+            {
+                $set: {
+                    "members.$[elem].currentPaymentStatus": "PENDING"
+                }
+            },
+            {
+                arrayFilters: [{ "elem.userId": { $ne: selectedWinner.userId._id } }]
+            }
+        );
 
         // Emit final result
         const io = req.app.get("io");
@@ -1413,6 +1471,87 @@ exports.resolveTie = async (req, res, next) => {
                 dividendPerMember,
                 payablePerMember
             }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to finalize a bidding and mark all collection & distribution done
+exports.markCollectionDone = async (req, res, next) => {
+    try {
+        const { biddingRoundId } = req.body;
+
+        if (!biddingRoundId) {
+            return res.status(400).json({
+                success: false,
+                message: "Bidding round ID is required"
+            });
+        }
+
+        const round = await BiddingRound.findById(biddingRoundId);
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        if (round.status !== "PAYMENT_OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Collection phase not active"
+            });
+        }
+
+        const group = await Groups.findById(round.groupId);
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        //Verify all non-winners have PAID
+        const unpaidMembers = group.members.filter(
+            member =>
+                member.userId.toString() !== round.winnerUserId.toString() &&
+                member.currentPaymentStatus !== "PAID"
+        );
+
+        if (unpaidMembers.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: "All members have not completed payment"
+            });
+        }
+
+        //Move round to FINALIZED
+        round.status = "FINALIZED";
+        await round.save();
+
+        // Increment group month
+        group.currentMonth += 1;
+
+        // Reset payment status for next month
+        group.members.forEach(member => {
+            member.currentPaymentStatus = "PENDING";
+        });
+
+        // If group completed
+        if (group.currentMonth > group.totalMonths) {
+            group.status = "COMPLETED";
+        }
+
+        await group.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Collection completed and month advanced successfully"
         });
 
     } catch (error) {
