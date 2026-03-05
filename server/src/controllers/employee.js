@@ -254,12 +254,10 @@ exports.logTransaction = async (req, res, next) => {
             }).select("amount").lean();
 
             const totalPaid = existingPayouts.reduce(
-                (sum, t) => sum + t.amount,
-                0
+                (sum, t) => sum + t.amount, 0
             );
 
-            const winnerReceivableAmount =
-                round.totalPoolAmount - round.winningBidAmount;
+            const winnerReceivableAmount = round.winnerReceivableAmount;
 
             if (totalPaid + amount > winnerReceivableAmount) {
                 return res.status(400).json({
@@ -350,7 +348,6 @@ exports.getEmployeeDashboard = async (req, res, next) => {
             }
         ]);
 
-        // Map: groupId_month -> { totalCollected, paidCount }
         const contributionMap = {};
         contributionAgg.forEach(item => {
             const key = `${item._id.groupId}_${item._id.monthNumber}`;
@@ -360,7 +357,7 @@ exports.getEmployeeDashboard = async (req, res, next) => {
             };
         });
 
-        //Fetch bidding rounds for current months
+        //Fetch bidding rounds
         const biddingRounds = await BiddingRound.find({
             groupId: { $in: groupIds }
         }).lean();
@@ -388,11 +385,27 @@ exports.getEmployeeDashboard = async (req, res, next) => {
                 paidMembersCount: 0
             };
 
-            const pendingMembers =
-                totalMembersInGroup - contributionData.paidMembersCount;
+            const bidding = biddingMap[key];
 
-            const expectedAmount =
-                totalMembersInGroup * group.monthlyContribution;
+            let expectedAmount = 0;
+            let pendingMembers = 0;
+
+            if (bidding && bidding.status === "PAYMENT_OPEN") {
+
+                const winnerId = bidding.winnerUserId?.toString();
+
+                //Winner excluded from contributors
+                const contributorCount = group.members.filter(
+                    m => m.userId.toString() !== winnerId && m.status === "ACTIVE"
+                ).length;
+
+                //Expected amount based on payablePerMember
+                expectedAmount = contributorCount * bidding.payablePerMember;
+
+                pendingMembers =
+                    contributorCount - contributionData.paidMembersCount;
+
+            }
 
             const progressPercentage =
                 expectedAmount === 0
@@ -403,8 +416,6 @@ exports.getEmployeeDashboard = async (req, res, next) => {
 
             totalCollectionCurrentMonth += contributionData.totalCollected;
             totalPendingCount += pendingMembers;
-
-            const bidding = biddingMap[key];
 
             groupDetails.push({
                 groupId: group._id,
@@ -420,14 +431,14 @@ exports.getEmployeeDashboard = async (req, res, next) => {
                     winnerUserId: bidding.winnerUserId,
                     totalPoolAmount: bidding.totalPoolAmount,
                     dividendPerMember: bidding.dividendPerMember,
-                    payoutAmount: bidding.payoutAmount
+                    winnerReceivableAmount: bidding.winnerReceivableAmount
                 } : {
                     status: "NOT_CREATED",
                     winningBidAmount: 0,
                     winnerUserId: null,
                     totalPoolAmount: 0,
                     dividendPerMember: 0,
-                    payoutAmount: 0
+                    winnerReceivableAmount: 0
                 }
             });
         }
@@ -468,6 +479,7 @@ exports.getActiveGroups = async (req, res, next) => {
         next(error);
     }
 };
+
 
 //controller to get pending for payment members(per group/per month)
 exports.getContributionPendingMembers = async (req, res, next) => {

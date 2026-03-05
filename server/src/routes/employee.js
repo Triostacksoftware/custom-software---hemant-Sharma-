@@ -11,7 +11,7 @@ router.post('/employee/signup/', employeeController.employeeSignup);
 router.post('/employee/login/', employeeController.employeeLogin);
 
 //endpoint to log monthly contribution
-router.post('/employee/group/contribution/log_contribution/', authentication.authenticate, employeeController.logContribution);
+router.post('/employee/group/contribution/log_contribution/', authentication.authenticate, employeeController.logTransaction);
 
 //endpoint to fetch employee dashboard
 router.get('/employee/dashboard/', authentication.authenticate, employeeController.getEmployeeDashboard);
