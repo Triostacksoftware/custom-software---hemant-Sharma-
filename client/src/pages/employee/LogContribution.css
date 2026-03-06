@@ -29,16 +29,18 @@
     font-size: 0.95rem;
 }
 
-.error-message {
+.log-contribution-page .error-message {
     background: #fee2e2;
     color: #b91c1c;
     border-left: 4px solid #b91c1c;
+    justify-content: flex-start;
 }
 
-.success-message {
+.log-contribution-page .success-message {
     background: #e6f7e6;
     color: #0b5e0b;
     border-left: 4px solid #10b981;
+    justify-content: flex-start;
 }
 
 .contribution-form {

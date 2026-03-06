@@ -16,10 +16,10 @@ import MemberDetails from './pages/admin/MemberDetails';
 import EmployeeDashboard from './pages/employee/Dashboard';
 import EmployeeLayout from './components/layout/EmployeeLayout';
 import LogContribution from './pages/employee/LogContribution';
-import History from './pages/employee/History';
 import MemberRoute from './routes/MemberRoute';
 import MemberLayout from './components/layout/MemberLayout';
 import MemberDashboard from './pages/member/Dashboard';
+import TransactionHistory from './pages/employee/TransactionHistory';
 
 import './App.css';
 
@@ -123,9 +123,9 @@ function App() {
                             </EmployeeRoute>
                         } />
                         <Route path="/employee/history" element={
-                            <EmployeeRoute allowedRoles={['employee']}>
+                            <EmployeeRoute>
                                 <EmployeeLayout>
-                                    <History />
+                                    <TransactionHistory />
                                 </EmployeeLayout>
                             </EmployeeRoute>
                         } />

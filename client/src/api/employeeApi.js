@@ -13,8 +13,9 @@ export const employeeApi = {
     // Log transaction (contribution or payout)
     logTransaction: (data) => api.post('/employee/group/contribution/log_contribution/', data),
 
-    // Contribution history (future)
-    getHistory: (params) => api.get('/employee/contributions/history/', { params }),
+    // Transaction history
+    getTransactionHistory: (params = {}) => api.get('/employee/transactions/history', { params }),
+
 };
 
 export default employeeApi;
