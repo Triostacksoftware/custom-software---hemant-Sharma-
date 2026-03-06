@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { LogOut, Menu, X, User, Home } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
 import './MemberLayout.css';
 
-const MemberLayout = ({ children }) => {
+const UserLayout = ({ children }) => {
+    const location = useLocation();
     const navigate = useNavigate();
     const { user, logout } = useAuth();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    const menuItems = [
+        { path: '/user/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    ];
 
     const handleLogout = () => {
         logout();
@@ -15,57 +20,61 @@ const MemberLayout = ({ children }) => {
     };
 
     return (
-        <div className="member-layout">
-            {/* Header */}
-            <header className="member-header">
-                <div className="header-content">
-                    <div className="header-left">
-                        <button
-                            className="mobile-menu-btn"
-                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        >
-                            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-                        </button>
-                        <h1 className="app-title">Member Portal</h1>
-                    </div>
-                    <div className="user-info">
-                        <span className="user-name">
-                            <User size={16} />
-                            {user?.name || 'Member'}
-                        </span>
-                        <button className="logout-btn" onClick={handleLogout}>
-                            <LogOut size={16} />
-                            <span className="logout-text">Logout</span>
-                        </button>
+        <div className="user-layout">
+            <aside className={`user-sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+                <div className="sidebar-header">
+                    <h2 className="sidebar-title">Member Portal</h2>
+                    <button className="mobile-close-btn" onClick={() => setMobileMenuOpen(false)}>
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="user-info">
+                    <div className="user-avatar">{user?.name?.charAt(0) || 'M'}</div>
+                    <div className="user-details">
+                        <h3 className="user-name">{user?.name || 'Member'}</h3>
+                        <p className="user-role">Member</p>
                     </div>
                 </div>
-            </header>
 
-            {/* Mobile Navigation (optional) */}
-            {mobileMenuOpen && (
-                <div className="mobile-nav">
-                    <nav>
-                        <ul>
-                            <li>
-                                <button onClick={() => { setMobileMenuOpen(false); navigate('/member/dashboard'); }}>
-                                    <Home size={18} />
-                                    Dashboard
-                                </button>
+                <nav className="sidebar-nav">
+                    <ul className="nav-list">
+                        {menuItems.map((item) => (
+                            <li key={item.path} className="nav-item">
+                                <Link
+                                    to={item.path}
+                                    className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+                                    onClick={() => setMobileMenuOpen(false)}
+                                >
+                                    <span className="nav-icon">{item.icon}</span>
+                                    <span className="nav-label">{item.label}</span>
+                                </Link>
                             </li>
-                            {/* Add more member navigation items later */}
-                        </ul>
-                    </nav>
-                </div>
-            )}
+                        ))}
+                    </ul>
+                </nav>
 
-            {/* Main Content */}
-            <main className="member-main">
-                <div className="member-content">
-                    {children}
+                <div className="sidebar-footer">
+                    <button className="logout-btn" onClick={handleLogout}>
+                        <LogOut size={18} />
+                        <span>Logout</span>
+                    </button>
                 </div>
+            </aside>
+
+            <main className="user-main">
+                <header className="mobile-header">
+                    <button className="mobile-menu-btn" onClick={() => setMobileMenuOpen(true)}>
+                        <Menu size={24} />
+                    </button>
+                    <h1 className="page-title">
+                        {menuItems.find(item => item.path === location.pathname)?.label || 'Dashboard'}
+                    </h1>
+                </header>
+                <div className="user-content">{children}</div>
             </main>
         </div>
     );
 };
 
-export default MemberLayout;
+export default UserLayout;

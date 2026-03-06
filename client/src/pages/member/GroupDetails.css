@@ -1,6 +1,7 @@
-.user-dashboard {
+.member-dashboard {
     max-width: 1200px;
     margin: 0 auto;
+    padding: 1rem;
 }
 
 .page-title {
@@ -17,7 +18,7 @@
     margin-bottom: 2rem;
 }
 
-/* Stats Cards (similar to employee) */
+/* Stats Cards */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -87,15 +88,12 @@
     line-height: 1;
 }
 
-/* Keep existing stats-grid, stat-card, etc. unchanged above this point */
-
-/* Groups Table */
+/* Groups Section */
 .groups-section {
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     padding: 1.5rem;
-    margin-top: 2rem;
 }
 
 .section-title {
@@ -105,64 +103,50 @@
     margin-bottom: 1.5rem;
 }
 
-.groups-table-container {
-    overflow-x: auto;
+.groups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
-.groups-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.95rem;
-}
-
-.groups-table thead {
+/* Group Card - Redesigned */
+.group-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 1.25rem;
     background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.groups-table th {
-    padding: 1rem 1rem;
-    text-align: left;
-    font-weight: 600;
-    color: #475569;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.groups-table td {
-    padding: 1rem 1rem;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
-}
-
-.groups-table tbody tr {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
 }
 
-.groups-table tbody tr:hover {
-    background: #fafcff;
+.group-card:hover {
+    border-color: #2563eb;
+    background: white;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
 }
 
 .group-name {
+    font-size: 1.1rem;
     font-weight: 600;
     color: #0f172a;
-}
-
-.action-cell {
-    text-align: right;
-    color: #94a3b8;
+    margin: 0;
 }
 
 .badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 .badge.active {
@@ -180,14 +164,41 @@
     color: #475569;
 }
 
-/* Keep the rest of your existing CSS (loading, error, etc.) */
-
-.no-data {
-    text-align: center;
-    color: #94a3b8;
-    padding: 2rem;
+/* Details grid - two columns, labels above values */
+.group-details {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
 }
 
+.detail-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-label {
+    font-size: 0.7rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.detail-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.group-footer {
+    display: flex;
+    justify-content: flex-end;
+    color: #94a3b8;
+    margin-top: 0.25rem;
+}
+
+/* Loading & Error */
 .dashboard-loading,
 .dashboard-error {
     display: flex;
@@ -210,4 +221,10 @@
     to {
         transform: rotate(360deg);
     }
+}
+
+.no-data {
+    text-align: center;
+    color: #94a3b8;
+    padding: 2rem;
 }

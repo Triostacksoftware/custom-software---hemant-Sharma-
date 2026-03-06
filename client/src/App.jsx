@@ -20,6 +20,7 @@ import MemberRoute from './routes/MemberRoute';
 import MemberLayout from './components/layout/MemberLayout';
 import MemberDashboard from './pages/member/Dashboard';
 import TransactionHistory from './pages/employee/TransactionHistory';
+import MemberGroupDetails from './pages/member/GroupDetails';
 
 import './App.css';
 
@@ -135,6 +136,13 @@ function App() {
                             <MemberRoute>
                                 <MemberLayout>
                                     <MemberDashboard />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+                        <Route path="/user/group/:groupId" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <MemberGroupDetails />
                                 </MemberLayout>
                             </MemberRoute>
                         } />
