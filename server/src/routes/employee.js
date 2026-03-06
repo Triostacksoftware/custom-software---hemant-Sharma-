@@ -22,5 +22,8 @@ router.get('/employee/groups/active', authentication.authenticate, employeeContr
 //endpoint to fetch members whose contribution is pending
 router.get('/employee/groups/:groupId/pending_members/', authentication.authenticate, employeeController.getTransactionPendingMembers);
 
+//endpoint to fetch transaction history
+router.get('/employee/transactions/history/', authentication.authenticate, employeeController.getEmployeeTransactionHistory);
+
 
 module.exports = router;

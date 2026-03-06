@@ -657,3 +657,157 @@ exports.getTransactionPendingMembers = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//controller to get transaction history logged by the employee
+exports.getEmployeeTransactionHistory = async (req, res, next) => {
+    try {
+
+        const employeeId = req.employee._id;
+
+        // Extract query parameters
+        let {
+            page = 1,
+            limit = 20,
+            groupId,
+            memberId,
+            type,
+            fromDate,
+            toDate
+        } = req.query;
+
+        // Convert pagination values to numbers
+        page = parseInt(page);
+        limit = parseInt(limit);
+        if (page <= 0) page = 1;
+        if (limit <= 0) limit = 20;
+
+        const skip = (page - 1) * limit;
+
+        //Base filter - transactions handled by this employee
+        const filter = {
+            handledBy: employeeId,
+            status: "COMPLETED"
+        };
+
+        // Optional Filter: groupId
+        if (groupId) {
+            if (!mongoose.Types.ObjectId.isValid(groupId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid groupId"
+                });
+            }
+
+            filter.groupId = new mongoose.Types.ObjectId(groupId);
+        }
+
+        // Optional Filter: memberId
+        if (memberId) {
+            if (!mongoose.Types.ObjectId.isValid(memberId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid memberId"
+                });
+            }
+
+            filter.userId = new mongoose.Types.ObjectId(memberId);
+        }
+
+        // Optional Filter: transaction type
+        if (type) {
+
+            if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid transaction type"
+                });
+            }
+
+            filter.type = type;
+        }
+
+        // Optional Filter: Date range
+        if (fromDate || toDate) {
+
+            filter.handledAt = {};
+
+            if (fromDate) {
+
+                const start = new Date(fromDate);
+
+                if (isNaN(start)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid fromDate"
+                    });
+                }
+
+                filter.handledAt.$gte = start;
+            }
+
+            if (toDate) {
+
+                const end = new Date(toDate);
+
+                if (isNaN(end)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid toDate"
+                    });
+                }
+
+                filter.handledAt.$lte = end;
+            }
+        }
+
+        // Count total transactions (for pagination)
+        const total = await Transaction.countDocuments(filter);
+
+        // Fetch paginated transactions
+        const transactions = await Transaction.find(filter)
+
+            .populate({
+                path: "groupId",
+                select: "name"
+            })
+
+            .populate({
+                path: "userId",
+                select: "name phoneNumber"
+            })
+
+            .populate({
+                path: "handledBy",
+                select: "name"
+            })
+
+            .sort({ handledAt: -1 }) // newest first
+
+            .skip(skip)
+            .limit(limit)
+
+            .lean();
+
+        // Calculate total pages
+        const pages = Math.ceil(total / limit);
+
+        // Send response
+        return res.status(200).json({
+            success: true,
+            data: {
+                transactions,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    pages
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+
+    }
+};
