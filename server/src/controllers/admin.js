@@ -331,8 +331,6 @@ exports.addMemberToGroup = async (req, res, next) => {
         group.members.push({
             userId,
             hasWon: false,
-            totalPaid: 0,
-            totalReceived: 0,
             status: "ACTIVE"
         });
 
@@ -909,7 +907,9 @@ exports.getGroupDetails = async (req, res, next) => {
         let currentMonthCollection = 0;
 
         // build Member Response & Calculate Totals
-        const totalExpectedPerMember = currentMonth * monthlyContribution;
+        const biddingRound = await BiddingRound.findOne({ groupId, monthNumber: currentMonth });
+
+        const payablePerMember = monthlyContribution - biddingRound.dividendPerMember;
 
         const membersResponse = members.map((member) => {
             const userId = member.userId?._id?.toString();
@@ -929,8 +929,8 @@ exports.getGroupDetails = async (req, res, next) => {
                 winningMonth: member.winningMonth,
                 totalPaid,
                 totalReceived: member.totalReceived,
-                expectedTillNow: totalExpectedPerMember,
-                pendingAmount: Math.max(0, totalExpectedPerMember - totalPaid),
+                expectedTillNow: payablePerMember,
+                pendingAmount: Math.max(0, payablePerMember - totalPaid),
                 contributionHistory: history,
             };
         });
