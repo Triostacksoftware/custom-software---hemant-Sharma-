@@ -20,7 +20,7 @@ router.get('/employee/dashboard/', authentication.authenticate, employeeControll
 router.get('/employee/groups/active', authentication.authenticate, employeeController.getActiveGroups);
 
 //endpoint to fetch members whose contribution is pending
-router.get('/employee/groups/:groupId/pending_members/', authentication.authenticate, employeeController.getContributionPendingMembers);
+router.get('/employee/groups/:groupId/pending_members/', authentication.authenticate, employeeController.getTransactionPendingMembers);
 
 
 module.exports = router;

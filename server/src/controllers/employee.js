@@ -481,78 +481,176 @@ exports.getActiveGroups = async (req, res, next) => {
 };
 
 
-//controller to get pending for payment members(per group/per month)
-exports.getContributionPendingMembers = async (req, res, next) => {
+//controller to get all pending transactions (contribution + winner payout) for a group/month
+exports.getTransactionPendingMembers = async (req, res, next) => {
     try {
+
         const { groupId } = req.params;
 
+        //validate groupId
         if (!mongoose.Types.ObjectId.isValid(groupId)) {
-            return res.status(400).json({ success: false, message: "Invalid groupId" });
+            return res.status(400).json({
+                success: false,
+                message: "Invalid groupId"
+            });
         }
 
-        // fetch group and populate user details in one go
+        //fetch group member details
         const group = await Groups.findById(groupId)
             .populate("members.userId", "name phoneNumber approvalStatus")
             .lean();
 
         if (!group) {
-            return res.status(404).json({ success: false, message: "Group not found" });
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
         }
 
         if (group.status !== "ACTIVE") {
-            return res.status(400).json({ success: false, message: "Group is not ACTIVE" });
+            return res.status(400).json({
+                success: false,
+                message: "Group is not ACTIVE"
+            });
         }
 
-        const { currentMonth, monthlyContribution, members, name: groupName } = group;
+        const { currentMonth, members, name: groupName } = group;
+
+        //fetch current bidding round
+        const round = await BiddingRound.findOne({
+            groupId,
+            monthNumber: currentMonth
+        }).lean();
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        // Payments allowed only when PAYMENT_OPEN
+        if (round.status !== "PAYMENT_OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: "Payments are not open yet"
+            });
+        }
+
+        const payablePerMember = round.payablePerMember;
+        const winnerId = round.winnerUserId.toString();
+        const winnerReceivableAmount = round.winnerReceivableAmount;
+
+        //filter ACTIVE members
         const activeMembers = members.filter(m => m.status === "ACTIVE");
 
-        // fetch all contributions for this group/month in one trip
-        const contributions = await Transaction.aggregate([
+        // Fetch all transactions for this group/month (CONTRIBUTION + WINNER_PAYOUT)
+        const transactions = await Transaction.aggregate([
             {
                 $match: {
                     groupId: new mongoose.Types.ObjectId(groupId),
                     monthNumber: currentMonth,
-                    type: "CONTRIBUTION"
+                    type: { $in: ["CONTRIBUTION", "WINNER_PAYOUT"] }
                 }
             },
             {
                 $group: {
-                    _id: "$userId",
+                    _id: {
+                        userId: "$userId",
+                        type: "$type"
+                    },
                     totalPaid: { $sum: "$amount" }
                 }
             }
         ]);
 
-        // convert contributions to a Map for O(1) lookup
-        const contributionMap = new Map(contributions.map(c => [c._id.toString(), c.totalPaid]));
+        //convert transaction results into lookup maps
+        const contributionMap = new Map();
+        let winnerPayoutPaid = 0;
 
-        // filter and map pending for payment members in a single pass
-        const pendingMembers = activeMembers.reduce((acc, member) => {
-            const paid = contributionMap.get(member.userId._id.toString()) || 0;
+        transactions.forEach(tx => {
 
-            if (paid < monthlyContribution) {
+            const userId = tx._id.userId.toString();
+            const type = tx._id.type;
+
+            if (type === "CONTRIBUTION") {
+                contributionMap.set(userId, tx.totalPaid);
+            }
+
+            if (type === "WINNER_PAYOUT") {
+                winnerPayoutPaid = tx.totalPaid;
+            }
+
+        });
+
+        // Determine contribution pending members
+        const contributionPendingMembers = activeMembers.reduce((acc, member) => {
+
+            const memberId = member.userId._id.toString();
+
+            // Skip winner (winner does not contribute)
+            if (memberId === winnerId) {
+                return acc;
+            }
+
+            const paid = contributionMap.get(memberId) || 0;
+
+            if (paid < payablePerMember) {
+
                 acc.push({
+                    type: "CONTRIBUTION",
                     userId: member.userId._id,
                     name: member.userId.name,
                     phoneNumber: member.userId.phoneNumber,
                     approvalStatus: member.userId.approvalStatus,
                     totalPaidThisMonth: paid,
-                    remainingAmount: monthlyContribution - paid,
+                    remainingAmount: payablePerMember - paid,
                     hasWon: member.hasWon,
                     winningMonth: member.winningMonth
                 });
+
             }
+
             return acc;
+
         }, []);
 
+        //Determine payout pending for winner
+        let payoutPending = null;
+
+        if (winnerReceivableAmount && winnerPayoutPaid < winnerReceivableAmount) {
+
+            const winnerMember = activeMembers.find(
+                m => m.userId._id.toString() === winnerId
+            );
+
+            if (winnerMember) {
+
+                payoutPending = {
+                    type: "WINNER_PAYOUT",
+                    userId: winnerMember.userId._id,
+                    name: winnerMember.userId.name,
+                    phoneNumber: winnerMember.userId.phoneNumber,
+                    approvalStatus: winnerMember.userId.approvalStatus,
+                    totalPaidToWinner: winnerPayoutPaid,
+                    remainingAmount: winnerReceivableAmount - winnerPayoutPaid,
+                    payoutAmount: winnerReceivableAmount
+                };
+
+            }
+
+        }
+
+        // Final Response
         return res.status(200).json({
             success: true,
             groupId: group._id,
             groupName,
             currentMonth,
-            monthlyContribution,
-            pendingCount: pendingMembers.length,
-            pendingMembers
+            payablePerMember,
+            contributionPendingCount: contributionPendingMembers.length,
+            contributionPendingMembers,
+            payoutPending
         });
 
     } catch (error) {
