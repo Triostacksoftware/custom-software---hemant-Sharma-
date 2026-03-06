@@ -125,6 +125,65 @@
     animation: spin 1s linear infinite;
 }
 
+.member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+}
+
+.member-item:hover {
+    background: #e2e8f0;
+}
+
+.member-item.selected {
+    background: #2563eb;
+    color: white;
+    border-color: #1d4ed8;
+}
+
+.member-item.selected .member-remaining {
+    color: #e0f2fe;
+}
+
+.member-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.member-remaining {
+    font-weight: 600;
+    color: #2563eb;
+}
+
+.winner-item {
+    background: #fff4e5;
+    border-color: #f59e0b;
+}
+
+.winner-item.selected {
+    background: #f59e0b;
+    color: white;
+}
+
 .info-box {
     background: #f8fafc;
     border: 1px solid #e2e8f0;

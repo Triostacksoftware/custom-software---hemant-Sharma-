@@ -19,8 +19,8 @@ const EmployeeLayout = ({ children }) => {
 
     const menuItems = [
         { path: '/employee/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-        { path: '/employee/log-contribution', label: 'Log Contribution', icon: <FileText size={20} /> },
-        { path: '/employee/history', label: 'Contribution History', icon: <History size={20} /> },
+        { path: '/employee/log-contribution', label: 'Log Transaction', icon: <FileText size={20} /> },
+        { path: '/employee/history', label: 'Transaction History', icon: <History size={20} /> },
     ];
 
     const handleLogout = () => {
@@ -47,7 +47,7 @@ const EmployeeLayout = ({ children }) => {
                     <div className="employee-avatar">{user?.name?.charAt(0) || 'E'}</div>
                     <div className="employee-details">
                         <h3 className="employee-name">{user?.name || 'Employee'}</h3>
-                        <p className="employee-role">Field Collector</p>
+                        <p className="employee-role">Field Agent</p>
                     </div>
                 </div>
 

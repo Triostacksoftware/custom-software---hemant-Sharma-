@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import './Dashboard.css';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 
 const EmployeeDashboard = () => {
     const navigate = useNavigate();
@@ -20,6 +21,7 @@ const EmployeeDashboard = () => {
     const [dashboardData, setDashboardData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const { user } = useAuth();
 
     useEffect(() => {
         fetchDashboard();
@@ -91,8 +93,8 @@ const EmployeeDashboard = () => {
 
     return (
         <div className="employee-dashboard">
-            <h1 className="page-title">Welcome, Employee</h1>
-            <p className="page-subtitle">Manage monthly contributions and track group progress</p>
+            <h1 className="page-title">Welcome, {user.name || 'Employee'}</h1>
+            <p className="page-subtitle">Manage monthly transactions and track group progress</p>
 
             {/* Stats Cards */}
             <div className="stats-grid">
@@ -131,7 +133,7 @@ const EmployeeDashboard = () => {
                         <Clock size={24} />
                     </div>
                     <div className="stat-content">
-                        <span className="stat-label">Pending Contributions</span>
+                        <span className="stat-label">Pending Transactions</span>
                         <span className="stat-value">{pendingContributionCount}</span>
                     </div>
                 </div>
@@ -192,7 +194,7 @@ const EmployeeDashboard = () => {
                                                 className="action-btn"
                                                 onClick={() => navigate('/employee/log-contribution', { state: { groupId: group.groupId } })}
                                             >
-                                                Log Contribution
+                                                Log Transaction
                                                 <ChevronRight size={16} />
                                             </button>
                                         </td>

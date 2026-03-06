@@ -4,17 +4,17 @@ export const employeeApi = {
     // Dashboard
     getDashboard: () => api.get('/employee/dashboard/'),
 
-    // Active groups (new)
-    getActiveGroups: () => api.get('/employee/groups/active/'),
+    // Active groups
+    getActiveGroups: () => api.get('/employee/groups/active'),
 
-    // Pending members for a group
-    getPendingMembers: (groupId) => api.get(`/employee/groups/${groupId}/pending_members/`),
+    // Pending transactions (contributions + payout) for a group
+    getPendingTransactions: (groupId) => api.get(`/employee/groups/${groupId}/pending_members/`),
 
-    //Contribution logging
-    logContribution: (data) => api.post('/employee/group/contribution/log_contribution/', data),
+    // Log transaction (contribution or payout)
+    logTransaction: (data) => api.post('/employee/group/contribution/log_contribution/', data),
 
-    // Contribution history
-    // getHistory: (params) => api.get('/employee/contributions/history/', { params }),
+    // Contribution history (future)
+    getHistory: (params) => api.get('/employee/contributions/history/', { params }),
 };
 
 export default employeeApi;
