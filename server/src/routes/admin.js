@@ -53,5 +53,17 @@ router.get('/admin/group/fetch/group_details/:groupId', authentication.authentic
 //endpoint to fetch member details
 router.get('/admin/users/fetch/details/:userId', authentication.authenticate, authentication.isAdmin, adminController.getMemberDetails);
 
+//endpoint to open bidding for a group
+router.post('/admin/bidding/open/', authentication.authenticate, authentication.isAdmin, adminController.openBidding);
+
+//endpoint to close a bidding for a group
+router.post('/admin/bidding/close/', authentication.authenticate, authentication.isAdmin, adminController.closeBidding);
+
+//endpoint to resolve a tie in a bidding
+router.post('/admin/bidding/resolve-tie/', authentication.authenticate, authentication.isAdmin, adminController.resolveTie);
+
+//endpoint to finalize a bidding
+router.post('/admin/bidding/finalize/', authentication.authenticate, authentication.isAdmin, adminController.finalizeBidding);
+
 
 module.exports = router;
