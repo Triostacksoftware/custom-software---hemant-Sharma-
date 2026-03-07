@@ -500,9 +500,14 @@ exports.getUserDashboard = async (req, res, next) => {
         });
 
         // Build group cards
-        const groupCards = groups.map(group => {
-
+        const groupCards = await Promise.all(groups.map(async (group) => {
             const winningRound = winningMap.get(group._id.toString());
+
+            // Find current bidding round for this group
+            const currentRound = await BiddingRound.findOne({
+                groupId: group._id,
+                monthNumber: group.currentMonth
+            }).lean();
 
             const groupData = {
                 groupId: group._id,
@@ -512,7 +517,8 @@ exports.getUserDashboard = async (req, res, next) => {
                 monthlyContribution: group.monthlyContribution,
                 currentMonth: group.currentMonth,
                 totalMonths: group.totalMonths,
-                hasWon: !!winningRound
+                hasWon: !!winningRound,
+                biddingStatus: currentRound ? currentRound.status : 'NOT_CREATED',
             };
 
             if (winningRound) {
@@ -520,8 +526,7 @@ exports.getUserDashboard = async (req, res, next) => {
             }
 
             return groupData;
-
-        });
+        }));
 
         return res.status(200).json({
             success: true,
@@ -533,7 +538,7 @@ exports.getUserDashboard = async (req, res, next) => {
                     totalWinnings,
                     pendingPayment
                 },
-                groups: groupCards
+                groups: groupCards,
             }
         });
 
