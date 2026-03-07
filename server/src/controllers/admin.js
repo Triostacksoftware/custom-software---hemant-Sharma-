@@ -836,35 +836,48 @@ exports.rejectEmployee = async (req, res, next) => {
 };
 
 
-//controller to get group details **(important)
+//controller to get full group details including member financial stats
 exports.getGroupDetails = async (req, res, next) => {
     try {
         const { groupId } = req.params;
 
-        // group ID validation
+        //Validate groupId
         if (!mongoose.Types.ObjectId.isValid(groupId)) {
-            return res.status(400).json({ success: false, message: "Invalid group ID" });
+            return res.status(400).json({
+                success: false,
+                message: "Invalid group ID"
+            });
         }
 
-        // fetch Group Data
+        //Fetch group
         const group = await Groups.findById(groupId)
-            .populate("members.userId", "name")
+            .populate("members.userId", "name phone")
             .select("-__v")
             .lean();
 
         if (!group) {
-            return res.status(404).json({ success: false, message: "Group not found" });
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
         }
 
-        const { totalMembers, monthlyContribution, currentMonth, members } = group;
+        const { members, currentMonth, totalMembers } = group;
 
-        // optimized Aggregation
-        // We calculate everything in one trip to the database
-        const aggregatedContributions = await Transaction.aggregate([
+        //Fetch all bidding rounds
+        //Needed to calculate expected contributions
+        const biddingRounds = await BiddingRound.find({ groupId })
+            .select("monthNumber payablePerMember winnerUserId")
+            .lean();
+
+        // Aggregate all contribution transactions
+        // Only COMPLETED contributions are counted
+        const contributionAgg = await Transaction.aggregate([
             {
                 $match: {
                     groupId: new mongoose.Types.ObjectId(groupId),
-                    type: "CONTRIBUTION"
+                    type: "CONTRIBUTION",
+                    status: "COMPLETED"
                 }
             },
             {
@@ -882,7 +895,11 @@ exports.getGroupDetails = async (req, res, next) => {
                     totalPaid: { $sum: "$amount" },
                     currentMonthPaid: {
                         $sum: {
-                            $cond: [{ $eq: ["$monthNumber", currentMonth] }, "$amount", 0]
+                            $cond: [
+                                { $eq: ["$monthNumber", currentMonth] },
+                                "$amount",
+                                0
+                            ]
                         }
                     },
                     contributionHistory: {
@@ -898,60 +915,78 @@ exports.getGroupDetails = async (req, res, next) => {
             }
         ]);
 
-        // mapping the results for O(1) fast lookup
+        // Convert aggregation result to map for fast lookup
         const contributionMap = new Map(
-            aggregatedContributions.map(item => [item._id.toString(), item])
+            contributionAgg.map(item => [item._id.toString(), item])
         );
 
         let totalCollected = 0;
         let currentMonthCollection = 0;
 
-        // build Member Response & Calculate Totals
-        const biddingRound = await BiddingRound.findOne({ groupId, monthNumber: currentMonth });
+        //Build member response
+        const membersResponse = members.map(member => {
 
-        const payablePerMember = monthlyContribution - biddingRound.dividendPerMember;
-
-        const membersResponse = members.map((member) => {
             const userId = member.userId?._id?.toString();
+
             const contributionData = contributionMap.get(userId) || {};
 
             const totalPaid = contributionData.totalPaid || 0;
             const history = contributionData.contributionHistory || [];
+            const currentMonthPaid = contributionData.currentMonthPaid || 0;
 
-            // accumulate global totals while looping
             totalCollected += totalPaid;
-            currentMonthCollection += (contributionData.currentMonthPaid || 0);
+            currentMonthCollection += currentMonthPaid;
+
+            // Calculate expected contribution
+            let expectedTillNow = 0;
+
+            biddingRounds.forEach(round => {
+
+                // Skip winner's contribution
+                if (round.winnerUserId?.toString() !== userId) {
+                    expectedTillNow += round.payablePerMember || 0;
+                }
+
+            });
 
             return {
                 userId,
                 name: member.userId?.name || "Unknown User",
+                phone: member.userId?.phone || null,
                 hasWon: member.hasWon,
                 winningMonth: member.winningMonth,
                 totalPaid,
-                totalReceived: member.totalReceived,
-                expectedTillNow: payablePerMember,
-                pendingAmount: Math.max(0, payablePerMember - totalPaid),
-                contributionHistory: history,
+                totalReceived: member.totalReceived || 0,
+                expectedTillNow,
+                pendingAmount: Math.max(0, expectedTillNow - totalPaid),
+                currentMonthPaid,
+                contributionHistory: history
             };
+
         });
 
-        // final Financial Calculations
-        const monthlyPool = group.totalMonths * monthlyContribution;
+        //Financial summary
         const winnersCount = members.filter(m => m.hasWon).length;
 
         return res.status(200).json({
             success: true,
             data: {
-                group: { ...group, members: undefined }, // Remove raw members list
+                group: {
+                    _id: group._id,
+                    name: group.name,
+                    status: group.status,
+                    monthlyContribution: group.monthlyContribution,
+                    totalMembers: group.totalMembers,
+                    totalMonths: group.totalMonths,
+                    currentMonth: group.currentMonth
+                },
                 financialSummary: {
-                    monthlyPool,
-                    totalExpectedTillNow: monthlyPool - totalCollected,
                     totalCollected,
                     currentMonthCollection,
-                    totalRotated: winnersCount * monthlyPool,
+                    winnersCount
                 },
-                members: membersResponse,
-            },
+                members: membersResponse
+            }
         });
 
     } catch (error) {
@@ -960,91 +995,150 @@ exports.getGroupDetails = async (req, res, next) => {
 };
 
 
-//controller to fetch member details
+// controller to get full basic and financial details of a member
 exports.getMemberDetails = async (req, res, next) => {
+
     try {
+
         const { userId } = req.params;
 
+        //Validate userId
         if (!mongoose.Types.ObjectId.isValid(userId)) {
-            return res.status(400).json({ success: false, message: "Invalid userId" });
-
+            return res.status(400).json({
+                success: false,
+                message: "Invalid userId"
+            });
         }
 
         const userObjId = new mongoose.Types.ObjectId(userId);
 
-        //parallel execution, fetch user and financial details a the same time
-        const [user, contributionAgg, groups] = await Promise.all([
+        //Fetch user, transactions, and groups in parallel
+        const [user, transactionAgg, groups] = await Promise.all([
 
             User.findById(userId).select("-password").lean(),
 
-            //aggregate all contributions of this user across all groups
             Transaction.aggregate([
-                { $match: { userId: userObjId } },
+                {
+                    $match: {
+                        userId: userObjId,
+                        status: "COMPLETED"
+                    }
+                },
                 {
                     $lookup: {
                         from: "employees",
                         localField: "handledBy",
                         foreignField: "_id",
                         as: "collector"
-                    },
+                    }
                 },
                 { $unwind: { path: "$collector", preserveNullAndEmptyArrays: true } },
                 {
                     $group: {
                         _id: "$groupId",
-                        totalPaidInGroup: { $sum: "$amount" },
+
+                        totalContribution: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ["$type", "CONTRIBUTION"] },
+                                    "$amount",
+                                    0
+                                ]
+                            }
+                        },
+
+                        totalPayout: {
+                            $sum: {
+                                $cond: [
+                                    { $eq: ["$type", "WINNER_PAYOUT"] },
+                                    "$amount",
+                                    0
+                                ]
+                            }
+                        },
+
                         paymentHistory: {
                             $push: {
                                 monthNumber: "$monthNumber",
-                                amountPaid: "$amount",
+                                amount: "$amount",
+                                type: "$type",
                                 paymentMode: "$paymentMode",
                                 collectedAt: "$handledAt",
                                 remarks: "$remarks",
-                                collectorName: "$collector.name",
-                            },
-                        },
-                    },
-                },
+                                collectorName: "$collector.name"
+                            }
+                        }
+                    }
+                }
             ]),
 
-            //fetch the groups where ths user is a member
-            Groups.find({ "members.userId": userId }).lean(),
+            Groups.find({ "members.userId": userId }).lean()
         ]);
 
         if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
         }
 
-        //map contributions for instant lookup
-        const contributionMap = new Map(contributionAgg.map(c => [c._id.toString(), c]));
+        const transactionMap = new Map(
+            transactionAgg.map(c => [c._id.toString(), c])
+        );
+
         let totalPaidAcrossGroups = 0;
 
-        //process group-wise response
-        const groupResponses = groups.map((group) => {
-            const stats = contributionMap.get(group._id.toString()) || {};
-            const totalPaid = stats.totalPaidInGroup || 0;
-            totalPaidAcrossGroups += totalPaid;
+        //Process each group
+        const groupResponses = await Promise.all(
 
-            const memberInfo = group.members.find(m => m.userId.toString() === userId);
-            const expected = group.currentMonth * group.monthlyContribution;
+            groups.map(async (group) => {
 
-            return {
-                groupId: group._id,
-                groupName: group.name,
-                groupStatus: group.status,
-                monthlyContribution: group.monthlyContribution,
-                currentMonth: group.currentMonth,
-                totalPaidInGroup: totalPaid,
-                expectedTillNow: expected,
-                pendingAmount: Math.max(0, expected - totalPaid),
-                hasWon: memberInfo?.hasWon || false,
-                winningMonth: memberInfo?.winningMonth || null,
-                totalReceived: memberInfo?.totalReceived || 0,
-                paymentHistory: stats.paymentHistory || [],
+                const stats = transactionMap.get(group._id.toString()) || {};
 
-            };
-        });
+                const totalContribution = stats.totalContribution || 0;
+                const totalPayout = stats.totalPayout || 0;
+
+                totalPaidAcrossGroups += totalContribution;
+
+                const memberInfo = group.members.find(
+                    m => m.userId.toString() === userId
+                );
+
+                // Fetch bidding rounds of this group
+                const rounds = await BiddingRound.find({
+                    groupId: group._id
+                }).select("payablePerMember winnerUserId").lean();
+
+                // Calculate expected contribution
+                let expectedTillNow = 0;
+
+                rounds.forEach(round => {
+
+                    if (round.winnerUserId?.toString() !== userId) {
+                        expectedTillNow += round.payablePerMember || 0;
+                    }
+
+                });
+
+                return {
+                    groupId: group._id,
+                    groupName: group.name,
+                    groupStatus: group.status,
+                    monthlyContribution: group.monthlyContribution,
+                    currentMonth: group.currentMonth,
+                    totalPaidInGroup: totalContribution,
+                    totalReceivedInGroup: totalPayout,
+                    expectedTillNow,
+                    pendingAmount: Math.max(0, expectedTillNow - totalContribution),
+                    hasWon: memberInfo?.hasWon || false,
+                    winningMonth: memberInfo?.winningMonth || null,
+                    totalReceived: memberInfo?.totalReceived || 0,
+                    paymentHistory: stats.paymentHistory || []
+                };
+
+            })
+
+        );
 
         return res.status(200).json({
             success: true,
@@ -1052,15 +1146,14 @@ exports.getMemberDetails = async (req, res, next) => {
                 user,
                 financialSummary: {
                     totalPaidAcrossGroups,
-                    totalGroups: groups.length,
+                    totalGroups: groups.length
                 },
-                groups: groupResponses,
-            },
+                groups: groupResponses
+            }
         });
 
     } catch (error) {
         next(error);
-
     }
 };
 
