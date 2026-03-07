@@ -35,12 +35,50 @@ const MemberDashboard = () => {
         }).format(amount);
     };
 
+    // Group status badge class
     const getStatusBadgeClass = (status) => {
         switch (status) {
             case 'ACTIVE': return 'badge active';
             case 'DRAFT': return 'badge draft';
             case 'COMPLETED': return 'badge completed';
             default: return 'badge';
+        }
+    };
+
+    // Human-readable group status
+    const getGroupStatusText = (status) => {
+        switch (status) {
+            case 'ACTIVE': return 'Active';
+            case 'DRAFT': return 'Draft';
+            case 'COMPLETED': return 'Completed';
+            default: return status;
+        }
+    };
+
+    // Bidding status badge class
+    const getBiddingBadgeClass = (status) => {
+        switch (status) {
+            case 'OPEN': return 'badge bidding-open';
+            case 'PAYMENT_OPEN': return 'badge bidding-payment';
+            case 'CLOSED': return 'badge bidding-closed';
+            case 'PENDING': return 'badge bidding-pending';
+            case 'COLLECTION_DONE': return 'badge bidding-collection';
+            case 'FINALIZED': return 'badge bidding-finalized';
+            default: return 'badge bidding-not-created';
+        }
+    };
+
+    // Human-readable bidding status (without prefix)
+    const getBiddingStatusText = (status) => {
+        switch (status) {
+            case 'OPEN': return 'Open';
+            case 'PAYMENT_OPEN': return 'Payment Open';
+            case 'CLOSED': return 'Closed';
+            case 'PENDING': return 'Pending';
+            case 'COLLECTION_DONE': return 'Collection Done';
+            case 'FINALIZED': return 'Finalized';
+            case 'NOT_CREATED': return 'Not Created';
+            default: return status;
         }
     };
 
@@ -118,7 +156,16 @@ const MemberDashboard = () => {
                             >
                                 <div className="group-header">
                                     <h3 className="group-name">{group.name}</h3>
-                                    <span className={getStatusBadgeClass(group.status)}>{group.status}</span>
+                                    <div className="badge-container">
+                                        {/* Bidding status badge with prefix */}
+                                        <span className={getBiddingBadgeClass(group.biddingStatus)}>
+                                            Bidding: {getBiddingStatusText(group.biddingStatus)}
+                                        </span>
+                                        {/* Group status badge with prefix */}
+                                        <span className={getStatusBadgeClass(group.status)}>
+                                            Group: {getGroupStatusText(group.status)}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="group-details">
                                     <div className="detail-item">
