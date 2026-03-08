@@ -49,7 +49,7 @@ io.on("connection", (socket) => {
 
     //join bidding room
     socket.on("joinBiddingRoom", ({ biddingRoundId }) => {
-        socket.join(biddingRoundId);
+        socket.join(biddingRoundId.toString());
         console.log(`Socket ${socket.id} joined room ${biddingRoundId}`);
     });
 

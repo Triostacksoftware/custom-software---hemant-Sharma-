@@ -93,15 +93,18 @@ exports.employeeLogin = async (req, res, next) => {
 };
 
 
-//controller to log transaction of members
+// Controller to log a transaction after employee physically collects/delivers the amount.
 exports.logTransaction = async (req, res, next) => {
     try {
 
-        const { groupId, userId, monthNumber, amount, paymentMode, remarks, handledAt, type } = req.body;
+        const {
+            groupId, userId, monthNumber,
+            amount, paymentMode, remarks, handledAt, type
+        } = req.body;
 
         const employeeId = req.employee._id;
 
-        //basic validation
+        //Basic validation
         if (!groupId || !userId || !monthNumber || !amount || !paymentMode || !type) {
             return res.status(400).json({
                 success: false,
@@ -116,7 +119,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //validate transaction type
         if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
             return res.status(400).json({
                 success: false,
@@ -124,7 +126,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //validate object Ids
         if (!mongoose.Types.ObjectId.isValid(groupId) || !mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({
                 success: false,
@@ -132,7 +133,7 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //fetch groups
+        // Fetch and validate group
         const group = await Groups.findById(groupId);
 
         if (!group) {
@@ -149,7 +150,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //validate month
         if (monthNumber !== group.currentMonth) {
             return res.status(400).json({
                 success: false,
@@ -157,7 +157,7 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //fetch user
+        //Fetch and validate user
         const user = await User.findById(userId);
 
         if (!user) {
@@ -167,7 +167,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //check member existence in group
         const member = group.members.find(
             m => m.userId.toString() === userId
         );
@@ -179,13 +178,8 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-
-        //fetch bidding round
-        //Ensure transactions allowed only after bidding
-        const round = await BiddingRound.findOne({
-            groupId,
-            monthNumber
-        });
+        //Fetch and validate bidding round
+        const round = await BiddingRound.findOne({ groupId, monthNumber });
 
         if (!round) {
             return res.status(404).json({
@@ -201,10 +195,9 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        //Contribution logic
+        //CONTRIBUTION: validate amount does not exceed remaining balance
         if (type === "CONTRIBUTION") {
 
-            // Winner should not pay contribution
             if (round.winnerUserId.toString() === userId) {
                 return res.status(400).json({
                     success: false,
@@ -212,33 +205,31 @@ exports.logTransaction = async (req, res, next) => {
                 });
             }
 
-            // Fetch previous contributions
-            const userTransactions = await Transaction.find({
+            // FIX: count only COMPLETED transactions as "already paid".
+            const completedContributions = await Transaction.find({
                 groupId,
                 userId,
                 monthNumber,
-                type: "CONTRIBUTION"
+                type: "CONTRIBUTION",
+                status: "COMPLETED"     //only verified/completed payments
             }).select("amount").lean();
 
-            const existingTotal = userTransactions.reduce(
-                (sum, t) => sum + t.amount,
-                0
+            const completedTotal = completedContributions.reduce(
+                (sum, t) => sum + t.amount, 0
             );
 
-            // Validate contribution limit
-            if (existingTotal + amount > round.payablePerMember) {
+            if (completedTotal + amount > round.payablePerMember) {
                 return res.status(400).json({
                     success: false,
-                    message: `Contribution limit exceeded. Paid: ${existingTotal}/${round.payablePerMember}`
+                    message: `Contribution limit exceeded. Completed so far: ${completedTotal}/${round.payablePerMember}`
                 });
             }
 
         }
 
-        //Winner Payout logic
+        //WINNER_PAYOUT: validate amount does not exceed remaining payout
         if (type === "WINNER_PAYOUT") {
 
-            // Only winner can receive payout
             if (round.winnerUserId.toString() !== userId) {
                 return res.status(400).json({
                     success: false,
@@ -246,29 +237,31 @@ exports.logTransaction = async (req, res, next) => {
                 });
             }
 
-            const existingPayouts = await Transaction.find({
+            //count only COMPLETED payouts
+            const completedPayouts = await Transaction.find({
                 groupId,
                 userId,
                 monthNumber,
-                type: "WINNER_PAYOUT"
+                type: "WINNER_PAYOUT",
+                status: "COMPLETED"     //only verified/completed payouts
             }).select("amount").lean();
 
-            const totalPaid = existingPayouts.reduce(
+            const completedTotal = completedPayouts.reduce(
                 (sum, t) => sum + t.amount, 0
             );
 
-            const winnerReceivableAmount = round.winnerReceivableAmount;
-
-            if (totalPaid + amount > winnerReceivableAmount) {
+            if (completedTotal + amount > round.winnerReceivableAmount) {
                 return res.status(400).json({
                     success: false,
-                    message: `Winner payout exceeds receivable amount. Paid: ${totalPaid}/${winnerReceivableAmount}`
+                    message: `Winner payout exceeds receivable amount. Completed so far: ${completedTotal}/${round.winnerReceivableAmount}`
                 });
             }
 
         }
 
-        //verify user confirmation
+        //Find the matching USER_CONFIRMED transaction to verify
+        // The member created this record when they confirmed the payment.
+        // We match by amount so each partial installment maps to its own record.
         const pendingTransaction = await Transaction.findOne({
             groupId,
             userId,
@@ -281,11 +274,13 @@ exports.logTransaction = async (req, res, next) => {
         if (!pendingTransaction) {
             return res.status(400).json({
                 success: false,
-                message: "User has not confirmed this transaction"
+                message: "No matching member confirmation found for this amount. Ensure the member has confirmed this exact amount."
             });
         }
 
-        //update transaction after employee verification
+        //Mark transaction as COMPLETED
+        // paymentMode and handledBy are already stored from the member's
+        // confirmation; the employee can override them here if needed.
         pendingTransaction.paymentMode = paymentMode;
         pendingTransaction.handledBy = employeeId;
         pendingTransaction.handledAt = handledAt || new Date();
@@ -301,7 +296,6 @@ exports.logTransaction = async (req, res, next) => {
 
     } catch (error) {
         next(error);
-
     }
 };
 
@@ -481,13 +475,15 @@ exports.getActiveGroups = async (req, res, next) => {
 };
 
 
-//controller to get all pending transactions (contribution + winner payout) for a group/month
+// Controller to get all pending transactions (contribution + winner payout) for a group/month.
+// Used by the employee side to know who still needs to pay / receive payout,
+// and which USER_CONFIRMED transactions are waiting for employee verification.
 exports.getTransactionPendingMembers = async (req, res, next) => {
     try {
 
         const { groupId } = req.params;
 
-        //validate groupId
+        // Validate groupId
         if (!mongoose.Types.ObjectId.isValid(groupId)) {
             return res.status(400).json({
                 success: false,
@@ -495,7 +491,7 @@ exports.getTransactionPendingMembers = async (req, res, next) => {
             });
         }
 
-        //fetch group member details
+        // Fetch group with member details
         const group = await Groups.findById(groupId)
             .populate("members.userId", "name phoneNumber approvalStatus")
             .lean();
@@ -516,7 +512,7 @@ exports.getTransactionPendingMembers = async (req, res, next) => {
 
         const { currentMonth, members, name: groupName } = group;
 
-        //fetch current bidding round
+        // Fetch current bidding round
         const round = await BiddingRound.findOne({
             groupId,
             monthNumber: currentMonth
@@ -529,7 +525,6 @@ exports.getTransactionPendingMembers = async (req, res, next) => {
             });
         }
 
-        // Payments allowed only when PAYMENT_OPEN
         if (round.status !== "PAYMENT_OPEN") {
             return res.status(400).json({
                 success: false,
@@ -541,107 +536,129 @@ exports.getTransactionPendingMembers = async (req, res, next) => {
         const winnerId = round.winnerUserId.toString();
         const winnerReceivableAmount = round.winnerReceivableAmount;
 
-        //filter ACTIVE members
+        // Filter to ACTIVE members only
         const activeMembers = members.filter(m => m.status === "ACTIVE");
 
-        // Fetch all transactions for this group/month (CONTRIBUTION + WINNER_PAYOUT)
-        const transactions = await Transaction.aggregate([
+        // Sum only COMPLETED transactions (truly collected amounts)
+        const completedAgg = await Transaction.aggregate([
             {
                 $match: {
                     groupId: new mongoose.Types.ObjectId(groupId),
                     monthNumber: currentMonth,
-                    type: { $in: ["CONTRIBUTION", "WINNER_PAYOUT"] }
+                    type: { $in: ["CONTRIBUTION", "WINNER_PAYOUT"] },
+                    status: "COMPLETED"     // only count verified/completed payments
                 }
             },
             {
                 $group: {
-                    _id: {
-                        userId: "$userId",
-                        type: "$type"
-                    },
+                    _id: { userId: "$userId", type: "$type" },
                     totalPaid: { $sum: "$amount" }
                 }
             }
         ]);
 
-        //convert transaction results into lookup maps
-        const contributionMap = new Map();
-        let winnerPayoutPaid = 0;
+        // Build lookup maps from the COMPLETED aggregate
+        const completedContributionMap = new Map(); // userId -> total completed contribution
+        let completedPayoutTotal = 0;
 
-        transactions.forEach(tx => {
-
+        completedAgg.forEach(tx => {
             const userId = tx._id.userId.toString();
-            const type = tx._id.type;
-
-            if (type === "CONTRIBUTION") {
-                contributionMap.set(userId, tx.totalPaid);
+            if (tx._id.type === "CONTRIBUTION") {
+                completedContributionMap.set(userId, tx.totalPaid);
             }
-
-            if (type === "WINNER_PAYOUT") {
-                winnerPayoutPaid = tx.totalPaid;
+            if (tx._id.type === "WINNER_PAYOUT") {
+                completedPayoutTotal = tx.totalPaid;
             }
-
         });
 
-        // Determine contribution pending members
+        // Fetch USER_CONFIRMED transactions waiting for employee verification
+        // Returned per-member so the employee can click and verify each one.
+        const userConfirmedTxns = await Transaction.find({
+            groupId,
+            monthNumber: currentMonth,
+            type: { $in: ["CONTRIBUTION", "WINNER_PAYOUT"] },
+            status: "USER_CONFIRMED"
+        })
+            .select("_id userId type amount paymentMode handledBy createdAt")
+            .lean();
+
+        // Group USER_CONFIRMED transactions by userId for quick lookup
+        const userConfirmedMap = new Map(); // userId -> [{ _id, amount, paymentMode, ... }]
+
+        userConfirmedTxns.forEach(tx => {
+            const uid = tx.userId.toString();
+            if (!userConfirmedMap.has(uid)) userConfirmedMap.set(uid, []);
+            userConfirmedMap.get(uid).push({
+                transactionId: tx._id,
+                amount: tx.amount,
+                paymentMode: tx.paymentMode,
+                handledBy: tx.handledBy,
+                createdAt: tx.createdAt
+            });
+        });
+
+        //Build contribution pending members list
+        // A member appears here if their COMPLETED total < payablePerMember OR
+        // if they have USER_CONFIRMED transactions still awaiting verification.
         const contributionPendingMembers = activeMembers.reduce((acc, member) => {
 
             const memberId = member.userId._id.toString();
 
-            // Skip winner (winner does not contribute)
-            if (memberId === winnerId) {
-                return acc;
-            }
+            // Winner never pays contribution
+            if (memberId === winnerId) return acc;
 
-            const paid = contributionMap.get(memberId) || 0;
+            const completedPaid = completedContributionMap.get(memberId) || 0;
+            const remainingAmount = payablePerMember - completedPaid;
+            const pendingConfirmations = userConfirmedMap.get(memberId) || [];
 
-            if (paid < payablePerMember) {
-
+            // Include member if there is still money to collect OR
+            // if they have confirmations waiting for employee action
+            if (remainingAmount > 0 || pendingConfirmations.length > 0) {
                 acc.push({
                     type: "CONTRIBUTION",
                     userId: member.userId._id,
                     name: member.userId.name,
                     phoneNumber: member.userId.phoneNumber,
                     approvalStatus: member.userId.approvalStatus,
-                    totalPaidThisMonth: paid,
-                    remainingAmount: payablePerMember - paid,
+                    totalPaidThisMonth: completedPaid,        // COMPLETED only
+                    remainingAmount,                          // based on COMPLETED only
+                    pendingConfirmations,                     // USER_CONFIRMED waiting for employee
                     hasWon: member.hasWon,
                     winningMonth: member.winningMonth
                 });
-
             }
 
             return acc;
 
         }, []);
 
-        //Determine payout pending for winner
+        //Build winner payout pending
         let payoutPending = null;
+        const winnerConfirmations = userConfirmedMap.get(winnerId) || [];
+        const winnerRemainingAmount = winnerReceivableAmount - completedPayoutTotal;
 
-        if (winnerReceivableAmount && winnerPayoutPaid < winnerReceivableAmount) {
+        if (winnerRemainingAmount > 0 || winnerConfirmations.length > 0) {
 
             const winnerMember = activeMembers.find(
                 m => m.userId._id.toString() === winnerId
             );
 
             if (winnerMember) {
-
                 payoutPending = {
                     type: "WINNER_PAYOUT",
                     userId: winnerMember.userId._id,
                     name: winnerMember.userId.name,
                     phoneNumber: winnerMember.userId.phoneNumber,
                     approvalStatus: winnerMember.userId.approvalStatus,
-                    totalPaidToWinner: winnerPayoutPaid,
-                    remainingAmount: winnerReceivableAmount - winnerPayoutPaid,
+                    totalPaidToWinner: completedPayoutTotal,   // COMPLETED only
+                    remainingAmount: winnerRemainingAmount,  // based on COMPLETED only
+                    pendingConfirmations: winnerConfirmations,   // USER_CONFIRMED waiting for employee
                     payoutAmount: winnerReceivableAmount
                 };
-
             }
 
         }
 
-        // Final Response
         return res.status(200).json({
             success: true,
             groupId: group._id,

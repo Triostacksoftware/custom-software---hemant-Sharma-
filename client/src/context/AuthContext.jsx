@@ -27,16 +27,19 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         const token = localStorage.getItem('token');
-        const role = localStorage.getItem('userRole'); // Retrieve stored role
+        const role = localStorage.getItem('userRole');
+        const name = localStorage.getItem('userName');
 
+        // We don't store the ID separately, so we need to decode token
         if (token && role) {
             const decoded = decodeToken(token);
+            const userId = decoded?.employeeId || decoded?.userId || decoded?.id;
             if (decoded && decoded.exp * 1000 > Date.now()) {
                 setUser({
                     token,
                     role,
                     name: decoded.name,
-                    employeeId: decoded.employeeId,
+                    _id: userId,
                 });
             } else {
                 // Token expired or invalid – clear storage
@@ -51,7 +54,6 @@ export const AuthProvider = ({ children }) => {
     const login = async (role, credentials) => {
         try {
             let response;
-
             switch (role) {
                 case 'admin':
                     response = await authApi.admin.login(credentials);
@@ -67,7 +69,6 @@ export const AuthProvider = ({ children }) => {
             }
 
             const { data } = response;
-
             if (!data.success) {
                 throw new Error(data.message || data.error || 'Login failed');
             }
@@ -75,7 +76,9 @@ export const AuthProvider = ({ children }) => {
             const token = data.token;
             const decoded = decodeToken(token);
 
-            // Store token and role separately
+            // Store user ID from token (field may be employeeId, userId, or id)
+            const userId = decoded?.employeeId || decoded?.userId || decoded?.id;
+
             localStorage.setItem('token', token);
             localStorage.setItem('userRole', role);
             if (decoded?.name) {
@@ -86,7 +89,7 @@ export const AuthProvider = ({ children }) => {
                 token,
                 role,
                 name: decoded?.name,
-                employeeId: decoded?.employeeId,
+                _id: userId, // <-- store the ID
             });
 
             return { success: true, data };
@@ -96,7 +99,6 @@ export const AuthProvider = ({ children }) => {
                 error.response?.data?.error ||
                 error.message ||
                 'Login failed';
-
             return { success: false, error: errorMessage };
         }
     };

@@ -86,6 +86,7 @@
     font-size: 0.95rem;
     transition: border-color 0.2s, box-shadow 0.2s;
     background: white;
+    box-sizing: border-box;
 }
 
 .form-group textarea {
@@ -102,9 +103,16 @@
 }
 
 .input-wrapper input.error,
-.select-wrapper select.error,
-.form-group textarea.error {
+.select-wrapper select.error {
     border-color: #dc2626;
+}
+
+/* Locked amount field — when verifying a specific USER_CONFIRMED installment */
+.input-wrapper input.locked {
+    background: #f1f5f9;
+    color: #475569;
+    cursor: not-allowed;
+    border-color: #cbd5e1;
 }
 
 .field-error {
@@ -123,19 +131,23 @@
     font-size: 0.85rem;
 }
 
-.inline-loader .spinner {
-    animation: spin 1s linear infinite;
-}
-
+/* ── Member list ── */
 .member-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    max-height: 300px;
+    gap: 0.75rem;
+    max-height: 400px;
     overflow-y: auto;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     padding: 0.5rem;
+}
+
+/* Wraps a member row + their pending confirmations together */
+.member-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
 }
 
 .member-item {
@@ -144,12 +156,13 @@
     gap: 0.75rem;
     padding: 0.75rem;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: 6px;
     background: #f8fafc;
     cursor: pointer;
     transition: all 0.2s;
     width: 100%;
     text-align: left;
+    flex-wrap: wrap;
 }
 
 .member-item:hover {
@@ -162,8 +175,9 @@
     border-color: #1d4ed8;
 }
 
-.member-item.selected .member-remaining {
-    color: #e0f2fe;
+.member-item.selected .member-remaining,
+.member-item.selected .member-phone {
+    color: #bfdbfe;
 }
 
 .member-name {
@@ -171,9 +185,15 @@
     font-weight: 500;
 }
 
+.member-phone {
+    font-size: 0.82rem;
+    color: #64748b;
+}
+
 .member-remaining {
     font-weight: 600;
     color: #2563eb;
+    font-size: 0.88rem;
 }
 
 .winner-item {
@@ -186,6 +206,93 @@
     color: white;
 }
 
+.winner-item.selected .member-remaining {
+    color: white;
+}
+
+/* ── Pending confirmations per member ── */
+/* These are USER_CONFIRMED installments waiting for employee verification */
+.confirmation-list {
+    margin-left: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.confirmation-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 500;
+    margin-bottom: 0.2rem;
+}
+
+.confirmation-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e0e7ff;
+    border-radius: 6px;
+    background: #f5f7ff;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+    text-align: left;
+    font-size: 0.88rem;
+}
+
+.confirmation-item:hover {
+    background: #e0e7ff;
+    border-color: #6366f1;
+}
+
+.confirmation-item.selected {
+    background: #6366f1;
+    color: white;
+    border-color: #4f46e5;
+}
+
+.confirmation-item.selected .conf-mode,
+.confirmation-item.selected .conf-date,
+.confirmation-item.selected .conf-action {
+    color: #c7d2fe;
+}
+
+.conf-amount {
+    font-weight: 700;
+    min-width: 80px;
+}
+
+.conf-mode {
+    font-size: 0.78rem;
+    color: #6366f1;
+    background: #e0e7ff;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.conf-date {
+    flex: 1;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.conf-action {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #6366f1;
+    margin-left: auto;
+}
+
+.confirmation-item.selected .conf-mode {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+/* ── Info box ── */
 .info-box {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
@@ -223,13 +330,23 @@
     margin: 0.25rem 0;
 }
 
+/* ── Remaining hint below amount field ── */
 .remaining-hint {
-    display: block;
-    margin-top: 0.25rem;
-    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 0.35rem;
+    font-size: 0.82rem;
     color: #64748b;
 }
 
+/* Shown when a specific confirmation is selected for verification */
+.confirmation-hint {
+    color: #4f46e5;
+    font-weight: 500;
+}
+
+/* ── Form actions ── */
 .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -305,6 +422,15 @@
 
     .cancel-btn,
     .submit-btn {
+        width: 100%;
+    }
+
+    .confirmation-item {
+        flex-wrap: wrap;
+    }
+
+    .conf-date {
+        order: 3;
         width: 100%;
     }
 }

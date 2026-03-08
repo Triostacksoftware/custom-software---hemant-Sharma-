@@ -1685,3 +1685,146 @@ exports.finalizeBidding = async (req, res, next) => {
         next(error);
     }
 };
+
+
+//controller to get current bidding round details for admin dashboard
+exports.getCurrentBiddingRound = async (req, res, next) => {
+    try {
+
+        const { groupId } = req.params;
+
+        //Validate groupId
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid groupId"
+            });
+        }
+
+        const groupObjectId = new mongoose.Types.ObjectId(groupId);
+
+        //Fetch group to determine current month
+        const group = await Groups.findById(groupObjectId)
+            .select("currentMonth")
+            .lean();
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        //fetch current bidding round
+        const round = await BiddingRound.findOne({
+            groupId: groupObjectId,
+            monthNumber: group.currentMonth
+        })
+            .populate("winnerUserId", "name")
+            .lean();
+
+        //If no round exists
+        if (!round) {
+            return res.status(200).json({
+                success: true,
+                data: null
+            });
+        }
+
+        //Fetch bid count
+        const bidsCount = await Bid.countDocuments({
+            biddingRoundId: round._id
+        });
+
+        // Validate bid range (10% - 20%)
+        const minBid = round.totalPoolAmount * 0.10;
+        const maxBid = round.totalPoolAmount * 0.20;
+
+        //Build response
+        const response = {
+            _id: round._id,
+            groupId: round.groupId,
+            monthNumber: round.monthNumber,
+            status: round.status,
+
+            startedAt: round.startedAt || null,
+            endedAt: round.endedAt || null,
+
+            totalPoolAmount: round.totalPoolAmount || null,
+
+            winnerUserId: round.winnerUserId?._id || null,
+            winnerName: round.winnerUserId?.name || null,
+
+            winningBidAmount: round.winningBidAmount || null,
+
+            payablePerMember: round.payablePerMember || null,
+            winnerReceivableAmount: round.winnerReceivableAmount || null,
+            dividendPerMember: round.dividendPerMember || null,
+
+            bidsCount,
+
+            minBid,
+            maxBid
+        };
+
+        return res.status(200).json({
+            success: true,
+            data: response
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// Controller to etch all bids for a specific bidding round
+exports.getBidsForRound = async (req, res, next) => {
+    try {
+
+        const { roundId } = req.params;
+
+        //Validate roundId
+        if (!mongoose.Types.ObjectId.isValid(roundId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid roundId"
+            });
+        }
+
+        const roundObjectId = new mongoose.Types.ObjectId(roundId);
+
+        //Ensure bidding round exists
+        const roundExists = await BiddingRound.exists({ _id: roundObjectId });
+
+        if (!roundExists) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        //Fetch bids sorted chronologically
+        const bids = await Bid.find({ biddingRoundId: roundObjectId })
+            .populate("userId", "name")
+            .sort({ createdAt: 1 }) // ascending order (oldest first)
+            .select("userId bidAmount createdAt")
+            .lean();
+
+        //Transform response to match frontend contract
+        const responseData = bids.map(bid => ({
+            userId: bid.userId?._id || null,
+            name: bid.userId?.name || "Unknown User",
+            bidAmount: bid.bidAmount,
+            timestamp: bid.createdAt
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: responseData
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};

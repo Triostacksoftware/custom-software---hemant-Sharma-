@@ -12,7 +12,7 @@ export const adminApi = {
             api.post(`/admin/group/activate_group/${groupId}`),
     },
 
-    // User Management
+    // User (Member) Management
     users: {
         listPending: (params = {}) =>
             api.get('/admin/users/fetch/pending_user/', { params }),
@@ -38,7 +38,18 @@ export const adminApi = {
             api.get('/admin/employees/fetch_all', { params }),
     },
 
-    // Dashboard Stats (if available)
+    // Bidding Actions
+    bidding: {
+        getCurrentRound: (groupId) => api.get(`/admin/bidding/current/${groupId}`),
+        open: (groupId) => api.post('/admin/bidding/open', { groupId }),
+        close: (biddingRoundId) => api.post('/admin/bidding/close', { biddingRoundId }),
+        resolveTie: (biddingRoundId, winnerUserId) =>
+            api.post('/admin/bidding/resolve-tie', { biddingRoundId, winnerUserId }),
+        finalize: (biddingRoundId) => api.post('/admin/bidding/finalize', { biddingRoundId }),
+        getBids: (roundId) => api.get(`/admin/bidding/round/${roundId}/bids`),
+    },
+
+    // Dashboard Stats
     dashboard: {
         stats: () => api.get('/admin/dashboard/stats/'),
     }

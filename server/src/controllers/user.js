@@ -1,11 +1,13 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 const User = require("../models/user.js");
 const BiddingRound = require("../models/biddingRound.js");
 const Bid = require("../models/bid.js");
 const Groups = require("../models/group.js");
 const Transaction = require("../models/transaction.js");
+const Employee = require("../models/employee.js");
 
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
@@ -223,27 +225,49 @@ exports.placeBid = async (req, res, next) => {
 };
 
 
-//controller to confirm transaction (contribution and payout both)
+// Controller to confirm transaction (contribution and payout both).
+// The employee side (logTransaction) will later mark it COMPLETED.
 exports.confirmTransaction = async (req, res, next) => {
     try {
 
-        const { groupId, biddingRoundId, monthNumber, amount, type } = req.body;
+        const {
+            groupId,
+            biddingRoundId,
+            monthNumber,
+            amount,
+            type,
+            paymentMode,   // member specifies how they paid e.g. CASH, UPI
+            handledBy      // _id of the employee who collected/delivered
+        } = req.body;
 
         const userId = req.user._id;
 
-        //basic validation
-        if (!groupId || !monthNumber || !amount || !type) {
+        //Basic field validation
+        if (!groupId || !monthNumber || !amount || !type || !paymentMode || !handledBy) {
             return res.status(400).json({
                 success: false,
                 message: "Missing required fields"
             });
         }
 
-        //object validation
         if (!mongoose.Types.ObjectId.isValid(biddingRoundId)) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid biddingRoundId"
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid groupId"
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(handledBy)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid employee ID"
             });
         }
 
@@ -254,7 +278,6 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        //validate transaction type
         if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
             return res.status(400).json({
                 success: false,
@@ -262,15 +285,28 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        //validate ObjectId
-        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+        if (!["CASH", "UPI", "INTERNET_BANKING", "CHEQUE"].includes(paymentMode)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid groupId"
+                message: "Invalid payment mode"
             });
         }
 
-        //fetch group
+        //Validate employee exists and is approved
+        // Prevent members from selecting a non-existent or unapproved employee
+        const employee = await Employee.findOne({
+            _id: handledBy,
+            approvalStatus: "APPROVED"
+        }).lean();
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Selected employee not found or not approved"
+            });
+        }
+
+        //Fetch and validate group
         const group = await Groups.findById(groupId);
 
         if (!group) {
@@ -287,7 +323,6 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        //check membership
         const member = group.members.find(
             m => m.userId.toString() === userId.toString()
         );
@@ -299,12 +334,8 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        //fetch bidding round
+        //Fetch and validate bidding round
         const round = await BiddingRound.findById(biddingRoundId);
-        // const round = await BiddingRound.findOne({
-        //     groupId,
-        //     monthNumber
-        // });
 
         if (!round) {
             return res.status(404).json({
@@ -320,14 +351,17 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        if (round.groupId.toString() !== groupId || round.monthNumber !== monthNumber) {
+        if (
+            round.groupId.toString() !== groupId ||
+            round.monthNumber !== monthNumber
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "Round does not belong to this group/month"
             });
         }
 
-        //CONTRIBUTION validation
+        // CONTRIBUTION: validate amount does not exceed remaining balance
         if (type === "CONTRIBUTION") {
 
             if (round.winnerUserId.toString() === userId.toString()) {
@@ -337,7 +371,6 @@ exports.confirmTransaction = async (req, res, next) => {
                 });
             }
 
-            //existing confirmed + completed contributions
             const previousTransactions = await Transaction.find({
                 groupId,
                 userId,
@@ -347,20 +380,19 @@ exports.confirmTransaction = async (req, res, next) => {
             }).select("amount").lean();
 
             const total = previousTransactions.reduce(
-                (sum, t) => sum + t.amount,
-                0
+                (sum, t) => sum + t.amount, 0
             );
 
             if (total + amount > round.payablePerMember) {
                 return res.status(400).json({
                     success: false,
-                    message: `Contribution exceeds limit. Current: ${total}/${round.payablePerMember}`
+                    message: `Contribution exceeds limit. Confirmed so far: ${total}/${round.payablePerMember}`
                 });
             }
 
         }
 
-        //WINNER PAYOUT validation
+        //WINNER_PAYOUT: validate amount does not exceed remaining payout
         if (type === "WINNER_PAYOUT") {
 
             if (round.winnerUserId.toString() !== userId.toString()) {
@@ -369,9 +401,6 @@ exports.confirmTransaction = async (req, res, next) => {
                     message: "Only winner receives payout"
                 });
             }
-
-            const winnerReceivable =
-                round.totalPoolAmount - round.winningBidAmount;
 
             const previousPayouts = await Transaction.find({
                 groupId,
@@ -382,20 +411,23 @@ exports.confirmTransaction = async (req, res, next) => {
             }).select("amount").lean();
 
             const total = previousPayouts.reduce(
-                (sum, t) => sum + t.amount,
-                0
+                (sum, t) => sum + t.amount, 0
             );
+
+            const winnerReceivable = round.totalPoolAmount - round.winningBidAmount;
 
             if (total + amount > winnerReceivable) {
                 return res.status(400).json({
                     success: false,
-                    message: `Payout exceeds receivable amount. Current: ${total}/${winnerReceivable}`
+                    message: `Payout exceeds receivable amount. Confirmed so far: ${total}/${winnerReceivable}`
                 });
             }
 
         }
 
-        //create confirmation transaction
+        // Create the USER_CONFIRMED transaction with payment details
+        // paymentMode and handledBy are saved now so the employee side
+        // (logTransaction) only needs to verify and flip status to COMPLETED
         await Transaction.create({
             groupId,
             userId,
@@ -403,6 +435,8 @@ exports.confirmTransaction = async (req, res, next) => {
             monthNumber,
             amount,
             type,
+            paymentMode,
+            handledBy,
             status: "USER_CONFIRMED"
         });
 
@@ -412,9 +446,7 @@ exports.confirmTransaction = async (req, res, next) => {
         });
 
     } catch (error) {
-
         next(error);
-
     }
 };
 
@@ -556,7 +588,7 @@ exports.getGroupDetails = async (req, res, next) => {
         const userId = req.user._id;
         const { groupId } = req.params;
 
-        // Fetch group
+        //fetch group
         const group = await Groups.findById(groupId).lean();
 
         if (!group) {
@@ -566,7 +598,7 @@ exports.getGroupDetails = async (req, res, next) => {
             });
         }
 
-        // Verify user membership
+        //Verify user is a member of this group
         const member = group.members?.find(
             m => m.userId.toString() === userId.toString()
         );
@@ -578,25 +610,23 @@ exports.getGroupDetails = async (req, res, next) => {
             });
         }
 
-        // Fetch required data in parallel
-        const [
-            rounds,
-            transactions
-        ] = await Promise.all([
+        //Fetch all bidding rounds and user's transactions in parallel
+        const [rounds, transactions] = await Promise.all([
             BiddingRound.find({ groupId }).lean(),
             Transaction.find({ groupId, userId }).sort({ createdAt: -1 }).lean()
         ]);
 
-        // Separate current round
+        //Identify the current active round for this group 
         const currentRound = rounds.find(
             r => r.monthNumber === group.currentMonth
         );
 
-        // Find winning round for this user
+        //Check if this user has ever won in this group
         const winningRound = rounds.find(
             r => r.winnerUserId?.toString() === userId.toString()
         );
 
+        //Build memberInfo with pending amounts
         const memberInfo = {
             hasWon: !!winningRound,
             winningMonth: winningRound ? winningRound.monthNumber : null,
@@ -605,19 +635,17 @@ exports.getGroupDetails = async (req, res, next) => {
             pendingPayout: 0
         };
 
-        // Format transactions
+        //Format transactions and accumulate pending amounts
         const formattedTransactions = transactions.map(tx => {
 
+            // Accumulate pending amounts for the member info panel
             if (tx.status !== "COMPLETED") {
-
                 if (tx.type === "CONTRIBUTION") {
                     memberInfo.pendingContribution += tx.amount;
                 }
-
                 if (tx.type === "WINNER_PAYOUT") {
                     memberInfo.pendingPayout += tx.amount;
                 }
-
             }
 
             return {
@@ -631,54 +659,51 @@ exports.getGroupDetails = async (req, res, next) => {
 
         });
 
+        //Build current bidding round data and fetch live bids
         let currentBiddingRound = null;
         let bids = [];
 
         if (currentRound) {
 
+            // Shape the round data for the frontend
             currentBiddingRound = {
                 _id: currentRound._id,
                 status: currentRound.status,
                 monthNumber: currentRound.monthNumber,
                 totalPoolAmount: currentRound.totalPoolAmount,
-                minBid: currentRound.minBid,
-                maxBid: currentRound.maxBid,
+                minBid: currentRound.totalPoolAmount * 0.10,
+                maxBid: currentRound.totalPoolAmount * 0.20,
                 startedAt: currentRound.startedAt,
                 endedAt: currentRound.endedAt,
                 winningBidAmount: currentRound.winningBidAmount || null,
                 winnerUserId: currentRound.winnerUserId || null,
                 payablePerMember: currentRound.payablePerMember,
-                winnerReceivableAmount: currentRound.winnerReceivableAmount || null
+                winnerReceivableAmount: currentRound.winnerReceivableAmount || null,
+                dividendPerMember: currentRound.dividendPerMember || null
             };
 
-            // Fetch user names for bids
-            if (currentRound.bids?.length) {
+            //fetch bids placed by the members
+            const existingBids = await Bid.find({ biddingRoundId: currentRound._id })
+                .populate("userId", "name")
+                .sort({ updatedAt: 1 })  // chronological order, oldest bid first
+                .lean();
 
-                const bidderIds = currentRound.bids.map(b => b.userId);
-
-                const bidders = await User.find({
-                    _id: { $in: bidderIds }
-                }).select("name").lean();
-
-                const userMap = new Map();
-                bidders.forEach(u => userMap.set(u._id.toString(), u.name));
-
-                bids = currentRound.bids.map(bid => ({
-                    userId: bid.userId,
-                    name: userMap.get(bid.userId.toString()) || "Unknown",
-                    bidAmount: bid.bidAmount,
-                    timestamp: bid.timestamp
-                }));
-
-            }
+            bids = existingBids.map(bid => ({
+                userId: bid.userId._id,
+                name: bid.userId.name || "Unknown",
+                bidAmount: bid.bidAmount,
+                timestamp: bid.updatedAt   // updatedAt reflects the latest bid upsert time
+            }));
 
         }
 
-        // Build bidding history
+        //Build bidding history from all past rounds
+        //Only include rounds before the current month (completed rounds)
         const biddingHistory = rounds
             .filter(r => r.monthNumber < group.currentMonth)
             .map(round => {
 
+                // Find this user's bid in each past round (if any)
                 const userBid = round.bids?.find(
                     b => b.userId.toString() === userId.toString()
                 );
@@ -692,6 +717,7 @@ exports.getGroupDetails = async (req, res, next) => {
 
             });
 
+        //Return the full response
         return res.status(200).json({
             success: true,
             data: {
@@ -714,7 +740,27 @@ exports.getGroupDetails = async (req, res, next) => {
         });
 
     } catch (error) {
+        next(error);
+    }
+};
 
+
+//controller to fetch approved employees (for member side employee selection dropdown)
+exports.getEmployeesForMember = async (req, res, next) => {
+    try {
+        // Only return employees who have been approved
+        const employees = await Employee.find({ approvalStatus: "APPROVED", role: "EMPLOYEE" })
+            .select("_id name phoneNumber")   // minimum fields needed for the dropdown
+            .sort({ name: 1 })               // alphabetical for easy scanning
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            message: "Employees fetched successfully",
+            data: { employees }
+        });
+
+    } catch (error) {
         next(error);
     }
 };

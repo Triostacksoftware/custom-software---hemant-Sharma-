@@ -12,6 +12,9 @@ export const userApi = {
 
     // Confirm transaction (contribution or payout)
     confirmTransaction: (data) => api.post('/user/transaction/confirm', data),
+
+    //get employees list for transaction confirmation
+    getEmployees: () => api.get('/member/get_employees/'),
 };
 
 export default userApi;

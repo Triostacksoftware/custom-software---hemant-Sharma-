@@ -65,5 +65,11 @@ router.post('/admin/bidding/resolve-tie/', authentication.authenticate, authenti
 //endpoint to finalize a bidding
 router.post('/admin/bidding/finalize/', authentication.authenticate, authentication.isAdmin, adminController.finalizeBidding);
 
+//endpoint to get current biddingRound details for admin dashboard
+router.get('/admin/bidding/current/:groupId', authentication.authenticate, authentication.isAdmin, adminController.getCurrentBiddingRound);
+
+//endpoint to get bid details for a bidding round
+router.get('/admin/bidding/round/:roundId/bids', authentication.authenticate, authentication.isAdmin, adminController.getBidsForRound);
+
 
 module.exports = router;

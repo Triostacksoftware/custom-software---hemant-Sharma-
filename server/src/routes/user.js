@@ -22,5 +22,8 @@ router.post('/user/bid/place', authentication.isMember, userController.placeBid)
 //endpoint to confirm a transaction
 router.post('/user/transaction/confirm', authentication.isMember, userController.confirmTransaction);
 
+//endpoint to get the list of active employees
+router.get('/member/get_employees', authentication.isMember, userController.getEmployeesForMember);
+
 
 module.exports = router;
