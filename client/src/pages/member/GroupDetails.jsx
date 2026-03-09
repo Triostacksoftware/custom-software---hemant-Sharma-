@@ -54,9 +54,9 @@ const GroupDetails = () => {
     const [confirming, setConfirming] = useState(false);
     const [confirmError, setConfirmError] = useState('');
     const [confirmSuccess, setConfirmSuccess] = useState('');
-    const [confirmAmount, setConfirmAmount] = useState('');   // partial amount
-    const [paymentMode, setPaymentMode] = useState('');   // selected payment mode
-    const [selectedEmployee, setSelectedEmployee] = useState('');   // selected employee _id
+    const [confirmAmount, setConfirmAmount] = useState('');
+    const [paymentMode, setPaymentMode] = useState('');
+    const [selectedEmployee, setSelectedEmployee] = useState('');
 
     // ── Employee list state ───────────────────────────────────────────────────
     const [employees, setEmployees] = useState([]);
@@ -72,15 +72,12 @@ const GroupDetails = () => {
         };
     }, [groupId]);
 
-    // Fetch employee list as soon as the round enters PAYMENT_OPEN so the
-    // dropdown is ready when the member needs it
     useEffect(() => {
         if (biddingRound?.status === 'PAYMENT_OPEN' && employees.length === 0) {
             fetchEmployees();
         }
     }, [biddingRound?.status]);
 
-    // Socket connection — only active while the round is OPEN
     useEffect(() => {
         if (biddingRound && biddingRound.status === 'OPEN') {
             const newSocket = io(SOCKET_URL);
@@ -111,9 +108,6 @@ const GroupDetails = () => {
                 });
             });
 
-            // Bidding closed by admin — two outcomes:
-            //   winnerUserId present  → no tie, straight to PAYMENT_OPEN
-            //   winnerUserId absent   → tie, stays CLOSED until admin resolves
             newSocket.on('biddingClosed', (data) => {
                 if (data.winnerUserId) {
                     setBiddingRound(prev => ({
@@ -148,7 +142,6 @@ const GroupDetails = () => {
             const round = data.currentBiddingRound;
             setBiddingRound(round);
 
-            // Prefer bids from backend (Bid collection) over localStorage
             if (data.bids && data.bids.length > 0) {
                 setBids(data.bids);
                 if (round) {
@@ -200,8 +193,6 @@ const GroupDetails = () => {
         }
     };
 
-    // Fetch approved employees for the handledBy dropdown.
-    // Calls GET /member/get_employees/ — add userApi.getEmployees() to userApi.js
     const fetchEmployees = async () => {
         try {
             setEmployeesLoading(true);
@@ -233,17 +224,13 @@ const GroupDetails = () => {
         }
     };
 
-    // Handles partial payment confirmation.
-    // isWinner flag determines WINNER_PAYOUT vs CONTRIBUTION type.
-    // paymentMode and handledBy are now required by the Transaction schema.
-    const handleConfirmTransaction = async (isWinner) => {
+    const handleConfirmTransaction = async (isCurrentRoundWinner) => {
         if (!biddingRound || biddingRound.status !== 'PAYMENT_OPEN') return;
 
-        const type = isWinner ? 'WINNER_PAYOUT' : 'CONTRIBUTION';
+        const type = isCurrentRoundWinner ? 'WINNER_PAYOUT' : 'CONTRIBUTION';
         const amount = Number(confirmAmount);
-        const maxAllowed = isWinner ? remainingPayout : remainingContribution;
+        const maxAllowed = isCurrentRoundWinner ? remainingPayout : remainingContribution;
 
-        // ── Client-side validation ────────────────────────────────────────────
         if (!amount || amount <= 0 || amount > maxAllowed) {
             setConfirmError(`Amount must be between ₹1 and ${formatCurrency(maxAllowed)}`);
             return;
@@ -257,7 +244,7 @@ const GroupDetails = () => {
             return;
         }
 
-        const confirmMessage = isWinner
+        const confirmMessage = isCurrentRoundWinner
             ? `Confirm receiving ${formatCurrency(amount)} via ${paymentMode}?`
             : `Confirm paying ${formatCurrency(amount)} via ${paymentMode}?`;
         if (!window.confirm(confirmMessage)) return;
@@ -277,7 +264,6 @@ const GroupDetails = () => {
                 handledBy: selectedEmployee
             });
 
-            // Reset form fields after successful submission
             setConfirmAmount('');
             setPaymentMode('');
             setSelectedEmployee('');
@@ -285,7 +271,6 @@ const GroupDetails = () => {
                 `${formatCurrency(amount)} confirmation submitted! Awaiting employee verification.`
             );
 
-            // Re-fetch so progress bar and running totals reflect the new entry
             fetchGroupDetails();
         } catch (err) {
             setConfirmError(
@@ -338,13 +323,36 @@ const GroupDetails = () => {
     if (!groupData) return null;
 
     const { group, memberInfo, transactions, biddingHistory } = groupData;
-    const isWinner = memberInfo?.hasWon;
+
+    // ── FIX: Two separate winner flags ────────────────────────────────────────
+    //
+    // Previously a single `isWinner = memberInfo?.hasWon` was used everywhere.
+    // `memberInfo.hasWon` is set by the backend whenever the user has EVER won
+    // in this group — it is a lifetime flag and remains true in all future months.
+    //
+    // Using that flag to gate the PAYMENT_OPEN contribution/payout sections
+    // caused the bug: in month 2, the previous winner (hasWon=true) was shown
+    // the PAYOUT section (with the current round's winnerReceivableAmount, e.g.
+    // ₹24000) instead of the CONTRIBUTION section showing the ₹8000 they owe.
+    //
+    // Solution: split into two variables used in the right places:
+    //
+    //   hasEverWon          → lifetime flag. Correct for:
+    //                           • "You Won!" info card
+    //                           • blocking the member from placing new bids
+    //
+    //   isCurrentRoundWinner → true ONLY if this member won THIS month's round.
+    //                           Correct for:
+    //                           • showing contribution vs payout section
+    //                           • calling handleConfirmTransaction(true/false)
+    // ─────────────────────────────────────────────────────────────────────────
+    const hasEverWon = memberInfo?.hasWon;
+    const isCurrentRoundWinner =
+        biddingRound?.winnerUserId?.toString() === user?._id?.toString();
+
     const totalPool = group.totalMembers * group.monthlyContribution;
 
     // ── Payment progress calculations ─────────────────────────────────────────
-    // Sum USER_CONFIRMED + COMPLETED transactions for the current month.
-    // Drives the progress bars and remaining-amount caps.
-
     const paidContribution = transactions
         .filter(tx =>
             tx.monthNumber === biddingRound?.monthNumber &&
@@ -368,11 +376,9 @@ const GroupDetails = () => {
         (biddingRound?.winnerReceivableAmount || 0) - paidPayout;
 
     // ── Shared partial payment form ───────────────────────────────────────────
-    // Reused for both the non-winner (contribution) and winner (payout) sections
     const renderConfirmForm = (isWinnerForm, remaining) => (
         <div className="partial-confirm-form">
 
-            {/* Amount */}
             <div className="confirm-field">
                 <label className="confirm-label">Amount</label>
                 <input
@@ -387,7 +393,6 @@ const GroupDetails = () => {
                 />
             </div>
 
-            {/* Payment mode */}
             <div className="confirm-field">
                 <label className="confirm-label">Payment Mode</label>
                 <div className="select-wrapper">
@@ -406,7 +411,6 @@ const GroupDetails = () => {
                 </div>
             </div>
 
-            {/* Employee — populated from GET /member/get_employees/ */}
             <div className="confirm-field">
                 <label className="confirm-label">Employee</label>
                 <div className="select-wrapper">
@@ -435,16 +439,10 @@ const GroupDetails = () => {
                 </div>
             </div>
 
-            {/* Submit */}
             <button
                 className="confirm-btn"
                 onClick={() => handleConfirmTransaction(isWinnerForm)}
-                disabled={
-                    confirming ||
-                    !confirmAmount ||
-                    !paymentMode ||
-                    !selectedEmployee
-                }
+                disabled={confirming || !confirmAmount || !paymentMode || !selectedEmployee}
             >
                 {confirming
                     ? <Loader size={16} className="spinner" />
@@ -497,7 +495,9 @@ const GroupDetails = () => {
                         <span className="info-value">{formatCurrency(totalPool)}</span>
                     </div>
                 </div>
-                {isWinner && (
+
+                {/* Uses hasEverWon — correct, this card is a permanent record */}
+                {hasEverWon && (
                     <div className="info-card winner">
                         <Award size={20} />
                         <div>
@@ -551,7 +551,8 @@ const GroupDetails = () => {
                                 )}
                             </div>
 
-                            {!isWinner ? (
+                            {/* Uses hasEverWon — correct, prevents re-bidding forever */}
+                            {!hasEverWon ? (
                                 <form onSubmit={handlePlaceBid} className="bid-form">
                                     <div className="input-group">
                                         <input
@@ -588,11 +589,11 @@ const GroupDetails = () => {
                         </div>
                     )}
 
-                    {/* ── PAYMENT_OPEN: winner banner + partial payment form ── */}
+                    {/* ── PAYMENT_OPEN ── */}
                     {biddingRound.status === 'PAYMENT_OPEN' && (
                         <div className="payment-info">
 
-                            {biddingRound.winnerUserId?.toString() === user?._id?.toString() ? (
+                            {isCurrentRoundWinner ? (
                                 <div className="winner-banner">
                                     <Award size={22} />
                                     <span>
@@ -613,8 +614,12 @@ const GroupDetails = () => {
                                 <p><strong>Dividend per Member:</strong> {formatCurrency(biddingRound.dividendPerMember)}</p>
                             </div>
 
-                            {/* Non-winner: contribution partial payments */}
-                            {!isWinner && (
+                            {/*
+                             * FIX: was `!isWinner` — showed nothing for previous winners.
+                             * Now uses isCurrentRoundWinner so a member who won in a
+                             * prior month correctly sees their contribution form here.
+                             */}
+                            {!isCurrentRoundWinner && (
                                 <div className="partial-payment-section">
                                     <h3 className="partial-payment-title">Your Contribution</h3>
                                     <div className="payment-progress">
@@ -653,8 +658,12 @@ const GroupDetails = () => {
                                 </div>
                             )}
 
-                            {/* Winner: payout receipt partial confirmations */}
-                            {isWinner && (
+                            {/*
+                             * FIX: was `isWinner` — wrongly shown to previous-month winners.
+                             * Now uses isCurrentRoundWinner so only this month's winner
+                             * sees the payout section with the correct receivable amount.
+                             */}
+                            {isCurrentRoundWinner && (
                                 <div className="partial-payment-section">
                                     <h3 className="partial-payment-title">Your Payout</h3>
                                     <div className="payment-progress">

@@ -33,11 +33,15 @@ const GroupDetails = () => {
 
     // Bidding state
     const [biddingRound, setBiddingRound] = useState(null);
-    const [bids, setBids] = useState([]);               // All bids in current round
+    const [bids, setBids] = useState([]);
     const [loadingBidding, setLoadingBidding] = useState(false);
     const [biddingError, setBiddingError] = useState('');
     const [biddingSuccess, setBiddingSuccess] = useState('');
     const [socket, setSocket] = useState(null);
+
+    // Pending members shown when finalize is blocked
+    // Shape: [{ name, phoneNumber, type, required, paid, remaining }]
+    const [finalizePendingMembers, setFinalizePendingMembers] = useState([]);
 
     // Tie resolution state
     const [tieModalOpen, setTieModalOpen] = useState(false);
@@ -80,14 +84,14 @@ const GroupDetails = () => {
 
             newSocket.on('connect', () => {
                 newSocket.emit('joinBiddingRoom', { biddingRoundId: biddingRound._id });
-                // After joining, fetch existing bids for this round
                 fetchBids(biddingRound._id);
             });
 
             newSocket.on('newBidPlaced', (bid) => {
-                // Prevent duplicates: check if bid with same userId and timestamp already exists
                 setBids(prev => {
-                    const exists = prev.some(b => b.userId === bid.userId && b.timestamp === bid.timestamp);
+                    const exists = prev.some(
+                        b => b.userId === bid.userId && b.timestamp === bid.timestamp
+                    );
                     if (exists) return prev;
                     return [...prev, bid];
                 });
@@ -96,14 +100,11 @@ const GroupDetails = () => {
             newSocket.on('biddingClosed', (data) => {
                 setBiddingRound(prev => ({ ...prev, status: 'CLOSED' }));
                 setBiddingSuccess(data.message || 'Bidding closed');
-                fetchCurrentBiddingRound(); // refresh round info
+                fetchCurrentBiddingRound();
             });
 
-            return () => {
-                newSocket.disconnect();
-            };
+            return () => { newSocket.disconnect(); };
         } else {
-            // Clear bids when round is not open
             setBids([]);
         }
     }, [biddingRound]);
@@ -149,6 +150,7 @@ const GroupDetails = () => {
         try {
             setBiddingError('');
             setBiddingSuccess('');
+            setFinalizePendingMembers([]);
             await adminApi.bidding.open(groupId);
             setBiddingSuccess('Bidding opened successfully!');
             fetchCurrentBiddingRound();
@@ -162,6 +164,7 @@ const GroupDetails = () => {
         try {
             setBiddingError('');
             setBiddingSuccess('');
+            setFinalizePendingMembers([]);
             const response = await adminApi.bidding.close(biddingRound._id);
             if (response.data.tie) {
                 setTiedUsers(response.data.tiedUsers);
@@ -192,15 +195,28 @@ const GroupDetails = () => {
 
     const handleFinalizeBidding = async () => {
         if (!biddingRound) return;
+
+        // Clear previous finalize feedback before retrying
+        setBiddingError('');
+        setBiddingSuccess('');
+        setFinalizePendingMembers([]);
+
         try {
-            setBiddingError('');
-            setBiddingSuccess('');
             await adminApi.bidding.finalize(biddingRound._id);
             setBiddingSuccess('Bidding finalized and group moved to next month!');
             fetchGroupDetails();
             fetchCurrentBiddingRound();
         } catch (err) {
-            setBiddingError(err.response?.data?.message || 'Failed to finalize bidding');
+            const data = err.response?.data;
+
+            // Show the generic error message
+            setBiddingError(data?.message || 'Failed to finalize bidding');
+
+            // If the backend returned a list of members with incomplete payments,
+            // display them so the admin knows exactly who is still pending.
+            if (data?.pendingMembers?.length) {
+                setFinalizePendingMembers(data.pendingMembers);
+            }
         }
     };
 
@@ -230,7 +246,9 @@ const GroupDetails = () => {
             const allUsers = response.data.data.members || [];
             const currentMemberIds = members.map(m => m.userId);
             const eligible = allUsers.filter(
-                user => user.approvalStatus === 'APPROVED' && !currentMemberIds.includes(user._id)
+                user =>
+                    user.approvalStatus === 'APPROVED' &&
+                    !currentMemberIds.includes(user._id)
             );
             setAvailableUsers(eligible);
         } catch (err) {
@@ -254,58 +272,29 @@ const GroupDetails = () => {
         }
     };
 
-    const openHistoryModal = (member) => {
-        setSelectedMember(member);
-        setShowHistoryModal(true);
-    };
-
-    const closeHistoryModal = () => {
-        setShowHistoryModal(false);
-        setSelectedMember(null);
-    };
+    const openHistoryModal = (member) => { setSelectedMember(member); setShowHistoryModal(true); };
+    const closeHistoryModal = () => { setShowHistoryModal(false); setSelectedMember(null); };
 
     const formatCurrency = (amount) => {
         if (amount == null || amount === '') return '₹0';
         const num = Number(amount);
         if (isNaN(num)) return '₹0';
         return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
+            style: 'currency', currency: 'INR',
+            minimumFractionDigits: 0, maximumFractionDigits: 0,
         }).format(num);
     };
 
     const formatDate = (dateString) => {
         if (!dateString) return '—';
-        const date = new Date(dateString);
-        return date.toLocaleString('en-IN', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
+        return new Date(dateString).toLocaleString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
         });
     };
 
-    const getStatusBadgeClass = (status) => {
-        switch (status) {
-            case 'ACTIVE': return 'status-badge active';
-            case 'DRAFT': return 'status-badge draft';
-            case 'COMPLETED': return 'status-badge completed';
-            default: return 'status-badge';
-        }
-    };
-
-    const getBiddingStatusClass = (status) => {
-        switch (status) {
-            case 'OPEN': return 'bidding-status open';
-            case 'PAYMENT_OPEN': return 'bidding-status payment-open';
-            case 'CLOSED': return 'bidding-status closed';
-            case 'FINALIZED': return 'bidding-status finalized';
-            default: return 'bidding-status';
-        }
-    };
+    const getStatusBadgeClass = (status) => `status-badge ${status?.toLowerCase()}`;
+    const getBiddingStatusClass = (status) => `bidding-status ${status?.toLowerCase().replace('_', '-')}`;
 
     if (loading) {
         return (
@@ -330,6 +319,7 @@ const GroupDetails = () => {
     const { group, financialSummary, members } = groupData;
     const isDraft = group.status === 'DRAFT';
     const isFull = members.length === group.totalMembers;
+
     const filteredUsers = availableUsers.filter(user =>
         user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
         user.phoneNumber.includes(userSearchTerm)
@@ -337,24 +327,74 @@ const GroupDetails = () => {
 
     return (
         <div className="group-details-page">
-            {/* Success/Error messages */}
-            {successMessage && <div className="success-message">{successMessage}</div>}
-            {biddingSuccess && <div className="success-message">{biddingSuccess}</div>}
-            {biddingError && <div className="error-message"><AlertCircle size={18} /> {biddingError}</div>}
 
-            {/* Header */}
+            {/* ── Global feedback messages ── */}
+            {successMessage && (
+                <div className="success-message">{successMessage}</div>
+            )}
+            {biddingSuccess && (
+                <div className="success-message">{biddingSuccess}</div>
+            )}
+            {biddingError && (
+                <div className="error-message">
+                    <AlertCircle size={18} /> {biddingError}
+                </div>
+            )}
+
+            {/* ── Pending members panel — shown when finalize is blocked ── */}
+            {finalizePendingMembers.length > 0 && (
+                <div className="finalize-pending-panel">
+                    <div className="finalize-pending-header">
+                        <AlertCircle size={18} />
+                        <strong>Payments incomplete — finalization blocked</strong>
+                    </div>
+                    <p className="finalize-pending-subtitle">
+                        The following members have not completed their payments for this month:
+                    </p>
+                    <table className="finalize-pending-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Phone</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Paid</th>
+                                <th>Remaining</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {finalizePendingMembers.map((m, idx) => (
+                                <tr key={idx}>
+                                    <td>{m.name}</td>
+                                    <td>{m.phoneNumber || '—'}</td>
+                                    <td>
+                                        <span className={`type-badge ${m.type === 'WINNER_PAYOUT' ? 'payout' : 'contribution'}`}>
+                                            {m.type === 'WINNER_PAYOUT' ? 'Payout' : 'Contribution'}
+                                        </span>
+                                    </td>
+                                    <td>{formatCurrency(m.required)}</td>
+                                    <td>{formatCurrency(m.paid)}</td>
+                                    <td className="remaining-cell">
+                                        {formatCurrency(m.remaining)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* ── Header ── */}
             <div className="group-details-header">
                 <button className="back-btn" onClick={() => navigate('/admin/groups')}>
-                    <ArrowLeft size={18} />
-                    Back to Groups
+                    <ArrowLeft size={18} /> Back to Groups
                 </button>
                 <h1 className="page-title">{group.name}</h1>
                 <div className="header-actions">
                     <span className={getStatusBadgeClass(group.status)}>{group.status}</span>
                     {isDraft && !isFull && (
                         <button className="add-member-btn" onClick={openAddMemberModal}>
-                            <UserPlus size={18} />
-                            Add Member
+                            <UserPlus size={18} /> Add Member
                         </button>
                     )}
                     {isDraft && isFull && (
@@ -363,23 +403,15 @@ const GroupDetails = () => {
                             onClick={handleActivateGroup}
                             disabled={activating}
                         >
-                            {activating ? (
-                                <>
-                                    <Loader size={18} className="spinner" />
-                                    Activating...
-                                </>
-                            ) : (
-                                <>
-                                    <Play size={18} />
-                                    Activate Group
-                                </>
-                            )}
+                            {activating
+                                ? <><Loader size={18} className="spinner" /> Activating...</>
+                                : <><Play size={18} /> Activate Group</>}
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Info Cards */}
+            {/* ── Info Cards ── */}
             <div className="info-cards">
                 <div className="info-card">
                     <div className="info-icon"><Calendar size={20} /></div>
@@ -425,94 +457,102 @@ const GroupDetails = () => {
                 </div>
             </div>
 
-            {/* Bidding Section (only for ACTIVE groups) */}
+            {/* ── Bidding Section (ACTIVE groups only) ── */}
             {group.status === 'ACTIVE' && (
                 <div className="bidding-section">
                     <h2 className="section-title">Bidding Management</h2>
+
                     {loadingBidding ? (
-                        <div className="loading-spinner"><Loader size={20} className="spinner" /> Loading bidding info...</div>
+                        <div className="loading-spinner">
+                            <Loader size={20} className="spinner" /> Loading bidding info...
+                        </div>
+                    ) : biddingRound ? (
+                        <div className="bidding-info">
+                            <div className="bidding-header">
+                                <span className={getBiddingStatusClass(biddingRound.status)}>
+                                    {biddingRound.status}
+                                </span>
+                                <span className="bidding-month">Month {biddingRound.monthNumber}</span>
+                            </div>
+
+                            <div className="bidding-details">
+
+                                {/* ── OPEN ── */}
+                                {biddingRound.status === 'OPEN' && (
+                                    <>
+                                        <p><strong>Started:</strong> {formatDate(biddingRound.startedAt)}</p>
+                                        <p><strong>Ends:</strong>   {formatDate(biddingRound.endedAt)}</p>
+                                        <p><strong>Bids placed:</strong> {biddingRound.bidsCount}</p>
+
+                                        <div className="live-bidding admin">
+                                            <h3>Live Bids</h3>
+                                            <div className="bid-feed">
+                                                {bids.length === 0 ? (
+                                                    <p className="no-bids">No bids yet.</p>
+                                                ) : (
+                                                    bids.map((bid, idx) => (
+                                                        <div key={idx} className="bid-message">
+                                                            <span className="bidder">{bid.name}</span>
+                                                            <span className="bid-amount">{formatCurrency(bid.bidAmount)}</span>
+                                                            <span className="bid-time">{formatDate(bid.timestamp)}</span>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <button className="action-btn close" onClick={handleCloseBidding}>
+                                            Close Bidding
+                                        </button>
+                                    </>
+                                )}
+
+                                {/* ── PAYMENT_OPEN ── */}
+                                {biddingRound.status === 'PAYMENT_OPEN' && (
+                                    <>
+                                        <p><strong>Winner:</strong>              {biddingRound.winnerName}</p>
+                                        <p><strong>Winning Bid:</strong>         {formatCurrency(biddingRound.winningBidAmount)}</p>
+                                        <p><strong>Payable per Member:</strong>  {formatCurrency(biddingRound.payablePerMember)}</p>
+                                        <p><strong>Winner Receivable:</strong>   {formatCurrency(biddingRound.winnerReceivableAmount)}</p>
+                                        <p><strong>Dividend per Member:</strong> {formatCurrency(biddingRound.dividendPerMember)}</p>
+
+                                        <button
+                                            className="action-btn finalize"
+                                            onClick={handleFinalizeBidding}
+                                        >
+                                            Finalize Bidding
+                                        </button>
+                                    </>
+                                )}
+
+                                {/* ── CLOSED with no winner (tie pending or no bids) ── */}
+                                {biddingRound.status === 'CLOSED' && !biddingRound.winnerUserId && (
+                                    <>
+                                        <p>No bids were placed. Bidding closed.</p>
+                                        <button className="action-btn reopen" onClick={handleOpenBidding}>
+                                            Open Bidding Again
+                                        </button>
+                                    </>
+                                )}
+
+                                {/* ── FINALIZED ── */}
+                                {biddingRound.status === 'FINALIZED' && (
+                                    <p>Bidding finalized. Group moved to next month.</p>
+                                )}
+                            </div>
+                        </div>
                     ) : (
-                        <>
-                            {biddingRound ? (
-                                <div className="bidding-info">
-                                    <div className="bidding-header">
-                                        <span className={getBiddingStatusClass(biddingRound.status)}>
-                                            {biddingRound.status}
-                                        </span>
-                                        <span className="bidding-month">Month {biddingRound.monthNumber}</span>
-                                    </div>
-                                    <div className="bidding-details">
-                                        {biddingRound.status === 'OPEN' && (
-                                            <>
-                                                <p><strong>Started:</strong> {formatDate(biddingRound.startedAt)}</p>
-                                                <p><strong>Ends:</strong> {formatDate(biddingRound.endedAt)}</p>
-                                                <p><strong>Bids placed:</strong> {biddingRound.bidsCount}</p>
-
-                                                {/* Live Bidding Feed for Admin */}
-                                                <div className="live-bidding admin">
-                                                    <h3>Live Bids</h3>
-                                                    <div className="bid-feed">
-                                                        {bids.length === 0 ? (
-                                                            <p className="no-bids">No bids yet.</p>
-                                                        ) : (
-                                                            bids.map((bid, idx) => (
-                                                                <div key={idx} className="bid-message">
-                                                                    <span className="bidder">{bid.name}</span>
-                                                                    <span className="bid-amount">{formatCurrency(bid.bidAmount)}</span>
-                                                                    <span className="bid-time">{formatDate(bid.timestamp)}</span>
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <button className="action-btn close" onClick={handleCloseBidding}>
-                                                    Close Bidding
-                                                </button>
-                                            </>
-                                        )}
-
-                                        {biddingRound.status === 'PAYMENT_OPEN' && (
-                                            <>
-                                                <p><strong>Winner:</strong> {biddingRound.winnerName}</p>
-                                                <p><strong>Winning Bid:</strong> {formatCurrency(biddingRound.winningBidAmount)}</p>
-                                                <p><strong>Payable per Member:</strong> {formatCurrency(biddingRound.payablePerMember)}</p>
-                                                <p><strong>Winner Receivable:</strong> {formatCurrency(biddingRound.winnerReceivableAmount)}</p>
-                                                <p><strong>Dividend per Member:</strong> {formatCurrency(biddingRound.dividendPerMember)}</p>
-                                                <button className="action-btn finalize" onClick={handleFinalizeBidding}>
-                                                    Finalize Bidding
-                                                </button>
-                                            </>
-                                        )}
-
-                                        {biddingRound.status === 'CLOSED' && !biddingRound.winnerUserId && (
-                                            <>
-                                                <p>No bids were placed. Bidding closed.</p>
-                                                <button className="action-btn reopen" onClick={handleOpenBidding}>
-                                                    Open Bidding Again
-                                                </button>
-                                            </>
-                                        )}
-
-                                        {biddingRound.status === 'FINALIZED' && (
-                                            <p>Bidding finalized. Group moved to next month.</p>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="no-bidding">
-                                    <p>No active bidding round for current month.</p>
-                                    <button className="action-btn open" onClick={handleOpenBidding}>
-                                        Open Bidding
-                                    </button>
-                                </div>
-                            )}
-                        </>
+                        <div className="no-bidding">
+                            <p>No active bidding round for current month.</p>
+                            <button className="action-btn open" onClick={handleOpenBidding}>
+                                Open Bidding
+                            </button>
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* Members Table */}
+            {/* ── Members Table ── */}
             <div className="members-section">
                 <h2 className="section-title">Members</h2>
                 <div className="members-table-container">
@@ -541,11 +581,9 @@ const GroupDetails = () => {
                                     </td>
                                     <td>{formatCurrency(member.currentMonthPaid)}</td>
                                     <td>
-                                        {member.hasWon ? (
-                                            <span className="won-badge">✓ Won</span>
-                                        ) : (
-                                            <span className="not-won-badge">—</span>
-                                        )}
+                                        {member.hasWon
+                                            ? <span className="won-badge">✓ Won</span>
+                                            : <span className="not-won-badge">—</span>}
                                     </td>
                                     <td>
                                         <button
@@ -562,7 +600,7 @@ const GroupDetails = () => {
                 </div>
             </div>
 
-            {/* History Modal */}
+            {/* ── History Modal ── */}
             {showHistoryModal && selectedMember && (
                 <div className="modal-overlay" onClick={closeHistoryModal}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -579,11 +617,8 @@ const GroupDetails = () => {
                                 <table className="history-table">
                                     <thead>
                                         <tr>
-                                            <th>Month</th>
-                                            <th>Amount</th>
-                                            <th>Mode</th>
-                                            <th>Collected By</th>
-                                            <th>Date</th>
+                                            <th>Month</th><th>Amount</th><th>Mode</th>
+                                            <th>Collected By</th><th>Date</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -604,7 +639,7 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* Add Member Modal */}
+            {/* ── Add Member Modal ── */}
             {showAddMemberModal && (
                 <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -622,7 +657,7 @@ const GroupDetails = () => {
                                     className="search-input"
                                     placeholder="Search by name or phone..."
                                     value={userSearchTerm}
-                                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                                    onChange={e => setUserSearchTerm(e.target.value)}
                                 />
                             </div>
                             {loadingUsers ? (
@@ -646,11 +681,9 @@ const GroupDetails = () => {
                                                     onClick={() => handleAddMember(user._id)}
                                                     disabled={addingUserId === user._id}
                                                 >
-                                                    {addingUserId === user._id ? (
-                                                        <span className="spinner-small"></span>
-                                                    ) : (
-                                                        'Add'
-                                                    )}
+                                                    {addingUserId === user._id
+                                                        ? <span className="spinner-small"></span>
+                                                        : 'Add'}
                                                 </button>
                                             </div>
                                         ))
@@ -662,7 +695,7 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* Tie Resolution Modal */}
+            {/* ── Tie Resolution Modal ── */}
             {tieModalOpen && (
                 <div className="modal-overlay" onClick={() => setTieModalOpen(false)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -688,13 +721,17 @@ const GroupDetails = () => {
                                 ))}
                             </div>
                             <div className="modal-actions">
-                                <button className="cancel-btn" onClick={() => setTieModalOpen(false)}>Cancel</button>
+                                <button className="cancel-btn" onClick={() => setTieModalOpen(false)}>
+                                    Cancel
+                                </button>
                                 <button
                                     className="submit-btn"
                                     onClick={handleResolveTie}
                                     disabled={!selectedWinner || resolvingTie}
                                 >
-                                    {resolvingTie ? <Loader size={16} className="spinner" /> : 'Confirm Winner'}
+                                    {resolvingTie
+                                        ? <Loader size={16} className="spinner" />
+                                        : 'Confirm Winner'}
                                 </button>
                             </div>
                         </div>

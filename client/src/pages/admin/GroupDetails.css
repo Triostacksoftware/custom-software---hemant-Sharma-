@@ -37,10 +37,6 @@
     letter-spacing: -0.5px;
 }
 
-.group-status-wrapper {
-    margin-left: auto;
-}
-
 .status-badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;
@@ -66,7 +62,7 @@
     color: #2c3e50;
 }
 
-/* Info Cards */
+/* ── Info Cards ── */
 .info-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -119,11 +115,7 @@
     color: #0f172a;
 }
 
-/* Financial Summary */
-.financial-section {
-    margin-bottom: 2.5rem;
-}
-
+/* ── Section titles ── */
 .section-title {
     font-size: 1.25rem;
     font-weight: 600;
@@ -132,40 +124,85 @@
     letter-spacing: -0.3px;
 }
 
-.financial-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-}
-
-.financial-card {
-    background: white;
-    border: 1px solid #e2e8f0;
+/* ── Finalize Pending Panel ── */
+/* Shown inline below global messages when finalize is blocked */
+.finalize-pending-panel {
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-left: 4px solid #f97316;
     border-radius: 8px;
-    padding: 1.25rem;
-    transition: border-color 0.2s;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
 }
 
-.financial-card:hover {
-    border-color: #2563eb;
+.finalize-pending-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #9a3412;
+    font-size: 1rem;
+    margin-bottom: 0.4rem;
 }
 
-.financial-label {
-    font-size: 0.85rem;
-    color: #64748b;
-    margin-bottom: 0.5rem;
+.finalize-pending-subtitle {
+    font-size: 0.875rem;
+    color: #7c2d12;
+    margin: 0 0 1rem 0;
+}
+
+.finalize-pending-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.finalize-pending-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    background: #fed7aa;
+    color: #7c2d12;
+    font-weight: 600;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
 
-.financial-value {
-    font-size: 1.5rem;
+.finalize-pending-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #fed7aa;
+    color: #431407;
+}
+
+.finalize-pending-table tr:last-child td {
+    border-bottom: none;
+}
+
+.remaining-cell {
     font-weight: 700;
-    color: #0f172a;
-    line-height: 1.2;
+    color: #c2410c;
 }
 
-/* Members Table */
+/* Type badge inside the pending table */
+.type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.type-badge.contribution {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.type-badge.payout {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+/* ── Members Table ── */
 .members-section {
     background: white;
     border: 1px solid #e2e8f0;
@@ -199,7 +236,7 @@
 }
 
 .members-table td {
-    padding: 1rem 1rem;
+    padding: 1rem;
     border-bottom: 1px solid #f1f5f9;
     color: #334155;
 }
@@ -254,7 +291,7 @@
     border-color: #2563eb;
 }
 
-/* Modal */
+/* ── Modal ── */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -301,7 +338,6 @@
     border-radius: 4px;
     display: flex;
     align-items: center;
-    justify-content: center;
 }
 
 .modal-close:hover {
@@ -340,7 +376,7 @@
     color: #334155;
 }
 
-/* Loading & Error */
+/* ── Loading & Error ── */
 .group-details-loading,
 .group-details-error {
     display: flex;
@@ -371,14 +407,9 @@
     padding: 0.5rem 1rem;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 0.875rem;
 }
 
-.group-details-error button:hover {
-    background: #b91c1c;
-}
-
-/* Bidding section */
+/* ── Bidding Section ── */
 .bidding-section {
     background: white;
     border: 1px solid #e2e8f0;
@@ -453,6 +484,11 @@
     cursor: pointer;
     align-self: flex-start;
     margin-top: 0.5rem;
+    transition: opacity 0.2s;
+}
+
+.action-btn:hover {
+    opacity: 0.88;
 }
 
 .action-btn.open {
@@ -488,140 +524,7 @@
     color: #64748b;
 }
 
-/* Tie modal */
-.tie-user-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin: 1rem 0;
-}
-
-.tie-user-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.tie-user-item:hover {
-    background: #f1f5f9;
-}
-
-.tie-user-item input[type="radio"] {
-    margin: 0;
-}
-
-.modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1.5rem;
-}
-
-/* Error message styling (if not already present) */
-.error-message {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: #fee2e2;
-    color: #b91c1c;
-    padding: 0.75rem 1rem;
-    border-radius: 6px;
-    margin-bottom: 1rem;
-    border-left: 4px solid #b91c1c;
-}
-
-.live-bidding {
-    margin-top: 1rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 1rem;
-    background: #f8fafc;
-}
-
-.bid-feed {
-    max-height: 300px;
-    overflow-y: auto;
-    margin-bottom: 1rem;
-}
-
-.bid-message {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.bid-message:last-child {
-    border-bottom: none;
-}
-
-.bidder {
-    font-weight: 600;
-    color: #0f172a;
-}
-
-.bid-amount {
-    font-weight: 600;
-    color: #2563eb;
-}
-
-.bid-time {
-    font-size: 0.8rem;
-    color: #64748b;
-}
-
-.no-bids {
-    text-align: center;
-    color: #94a3b8;
-    padding: 1rem;
-}
-
-.bid-form .input-group {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.bid-form input {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 4px;
-}
-
-.bid-form button {
-    padding: 0.5rem 1rem;
-    background: #2563eb;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.bid-form button:disabled {
-    opacity: 0.6;
-}
-
-.confirm-btn {
-    margin-top: 1rem;
-    padding: 0.75rem 1.5rem;
-    background: #10b981;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-}
-
-.confirm-btn:disabled {
-    opacity: 0.6;
-}
-
+/* ── Live Bidding Feed ── */
 .live-bidding {
     margin-top: 1rem;
     border: 1px solid #e2e8f0;
@@ -631,8 +534,7 @@
 }
 
 .live-bidding h3 {
-    margin-top: 0;
-    margin-bottom: 0.5rem;
+    margin: 0 0 0.5rem 0;
     font-size: 1rem;
     color: #334155;
 }
@@ -677,43 +579,53 @@
     padding: 1rem;
 }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+/* ── Tie modal ── */
+.tie-user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1rem 0;
 }
 
-@media (max-width: 768px) {
-    .group-details-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .group-status-wrapper {
-        margin-left: 0;
-    }
-
-    .info-cards {
-        grid-template-columns: 1fr;
-    }
-
-    .financial-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .members-table th,
-    .members-table td {
-        padding: 0.75rem;
-        font-size: 0.85rem;
-    }
-
-    .modal-content {
-        width: 95%;
-        max-height: 90vh;
-    }
+.tie-user-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    cursor: pointer;
 }
 
-/* Success message */
+.tie-user-item:hover {
+    background: #f1f5f9;
+}
+
+.tie-user-item input[type="radio"] {
+    margin: 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+/* ── Global feedback ── */
+.error-message {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    border-left: 4px solid #b91c1c;
+}
+
 .success-message {
     background: #e6f7e6;
     color: #0b5e0b;
@@ -724,7 +636,7 @@
     font-weight: 500;
 }
 
-/* Header actions (status badge + button) */
+/* ── Header actions ── */
 .header-actions {
     display: flex;
     align-items: center;
@@ -732,7 +644,6 @@
     margin-left: auto;
 }
 
-/* Add Member button */
 .add-member-btn {
     display: inline-flex;
     align-items: center;
@@ -752,7 +663,6 @@
     background: #1d4ed8;
 }
 
-/* Activate Group button */
 .activate-btn {
     display: inline-flex;
     align-items: center;
@@ -777,7 +687,7 @@
     cursor: not-allowed;
 }
 
-/* Small spinner for button inside modal */
+/* ── Small spinner (inside buttons) ── */
 .spinner-small {
     display: inline-block;
     width: 16px;
@@ -788,7 +698,7 @@
     animation: spin 0.8s linear infinite;
 }
 
-/* Modal search */
+/* ── Modal search ── */
 .search-wrapper {
     position: relative;
     margin-bottom: 1.5rem;
@@ -809,6 +719,7 @@
     border-radius: 6px;
     font-size: 0.95rem;
     transition: border-color 0.2s;
+    box-sizing: border-box;
 }
 
 .search-input:focus {
@@ -817,7 +728,7 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-/* User list inside modal */
+/* ── User list inside modal ── */
 .loading-users {
     display: flex;
     flex-direction: column;
@@ -891,4 +802,91 @@
     padding: 2rem;
     color: #94a3b8;
     font-style: italic;
+}
+
+/* ── Modal buttons ── */
+.cancel-btn,
+.submit-btn {
+    padding: 0.6rem 1.25rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.2s;
+}
+
+.cancel-btn {
+    background: white;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+}
+
+.cancel-btn:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+}
+
+.submit-btn {
+    background: #2563eb;
+    color: white;
+}
+
+.submit-btn:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ── Animations ── */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .group-details-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        margin-left: 0;
+    }
+
+    .info-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .members-table th,
+    .members-table td {
+        padding: 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .finalize-pending-table {
+        font-size: 0.78rem;
+    }
+
+    .finalize-pending-table th,
+    .finalize-pending-table td {
+        padding: 0.4rem 0.5rem;
+    }
 }
