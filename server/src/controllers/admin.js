@@ -1348,7 +1348,7 @@ exports.closeBidding = async (req, res, next) => {
         const winningBidAmount = winnerBid.bidAmount;
 
         // Calculate contribution and payout financials
-        const dividendPerMember = winningBidAmount / totalMembers;
+        const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
         const payablePerMember = group.monthlyContribution - dividendPerMember;
         const winnerReceivableAmount = totalPool - winningBidAmount;
 
@@ -1502,7 +1502,7 @@ exports.resolveTie = async (req, res, next) => {
 
         //Financial calculations
         const winnerReceivableAmount = totalPool - winningBidAmount;
-        const dividendPerMember = winningBidAmount / totalMembers;
+        const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
         const payablePerMember = group.monthlyContribution - dividendPerMember;
 
         //Update round
@@ -1572,13 +1572,12 @@ exports.resolveTie = async (req, res, next) => {
 };
 
 
-//controller to finalize bidding and move group to next month
+// Controller to finalize bidding and move the group to the next month.
 exports.finalizeBidding = async (req, res, next) => {
     try {
 
         const { biddingRoundId } = req.body;
 
-        //basic validation
         if (!biddingRoundId) {
             return res.status(400).json({
                 success: false,
@@ -1586,7 +1585,7 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        //fetch bidding round
+        //Fetch and validate bidding round
         const round = await BiddingRound.findById(biddingRoundId);
 
         if (!round) {
@@ -1596,7 +1595,6 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        //ensure round is still in payment stage
         if (round.status !== "PAYMENT_OPEN") {
             return res.status(400).json({
                 success: false,
@@ -1604,8 +1602,10 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        //fetch group
-        const group = await Groups.findById(round.groupId);
+        //Fetch group with member details
+        const group = await Groups.findById(round.groupId)
+            .populate("members.userId", "name phoneNumber")
+            .lean();
 
         if (!group) {
             return res.status(404).json({
@@ -1614,70 +1614,121 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        // Verify ALL transactions of this round are COMPLETED
-        const transactions = await Transaction.find({
-            biddingRoundId: round._id
-        }).populate("userId", "name phone");
+        const winnerId = round.winnerUserId.toString();
+        const payablePerMember = round.payablePerMember;
+        const winnerReceivable = round.winnerReceivableAmount;
 
-        //edge case: no transactions logged
-        if (!transactions.length) {
-            return res.status(400).json({
-                success: false,
-                message: "No transactions found for this round"
-            });
+        //Aggregate COMPLETED amounts per member for this round and
+        // compare each against the required amount. Any member whose COMPLETED total
+        // is less than their required amount is genuinely pending.
+        const completedAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    biddingRoundId: new mongoose.Types.ObjectId(biddingRoundId),
+                    status: "COMPLETED"    // only count employee-verified payments
+                }
+            },
+            {
+                $group: {
+                    _id: { userId: "$userId", type: "$type" },
+                    totalCompleted: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        // Build lookup maps: userId → completed total
+        const completedContributionMap = new Map(); // non-winner contributions
+        let completedPayoutTotal = 0;               // winner payout received
+
+        completedAgg.forEach(entry => {
+            const uid = entry._id.userId.toString();
+            const type = entry._id.type;
+            if (type === "CONTRIBUTION") completedContributionMap.set(uid, entry.totalCompleted);
+            if (type === "WINNER_PAYOUT") completedPayoutTotal = entry.totalCompleted;
+        });
+
+        //Check each non-winning member's contribution
+        const activeMembers = group.members.filter(m => m.status === "ACTIVE");
+
+        const pendingMembers = []; // collects everyone who hasn't fully paid/received
+
+        activeMembers.forEach(member => {
+            const memberId = member.userId._id.toString();
+
+            if (memberId === winnerId) return; // winner checked separately below
+
+            const completed = completedContributionMap.get(memberId) || 0;
+            const remaining = payablePerMember - completed;
+
+            if (remaining > 0) {
+                pendingMembers.push({
+                    name: member.userId.name,
+                    phoneNumber: member.userId.phoneNumber,
+                    type: "CONTRIBUTION",
+                    required: payablePerMember,
+                    paid: completed,
+                    remaining
+                });
+            }
+        });
+
+        //Check winner's payout receipt
+        const winnerRemainingPayout = winnerReceivable - completedPayoutTotal;
+
+        if (winnerRemainingPayout > 0) {
+            const winnerMember = activeMembers.find(
+                m => m.userId._id.toString() === winnerId
+            );
+            if (winnerMember) {
+                pendingMembers.push({
+                    name: winnerMember.userId.name,
+                    phoneNumber: winnerMember.userId.phoneNumber,
+                    type: "WINNER_PAYOUT",
+                    required: winnerReceivable,
+                    paid: completedPayoutTotal,
+                    remaining: winnerRemainingPayout
+                });
+            }
         }
 
-        //find pending transactions
-        const pendingTransactions = transactions.filter(
-            t => t.status !== "COMPLETED"
-        );
-
-        //if pending exist return member details
-        if (pendingTransactions.length > 0) {
-
-            const pendingMembers = pendingTransactions.map(t => ({
-                name: t.userId.name,
-                phone: t.userId.phone
-            }));
-
+        //Block finalization if anyone is still pending
+        if (pendingMembers.length > 0) {
             return res.status(400).json({
                 success: false,
-                message: "Some member transactions are still pending",
+                message: "Cannot finalize — some payments are incomplete",
                 pendingMembers
             });
         }
 
-        // All transactions completed -> finalize bidding
-        round.status = "FINALIZED";
-        round.finalizedAt = new Date();
+        //All payments verified — finalize the round
+        const roundDoc = await BiddingRound.findById(biddingRoundId);
+        roundDoc.status = "FINALIZED";
+        roundDoc.finalizedAt = new Date();
+        await roundDoc.save();
 
-        await round.save();
-
-        // Move group to next month
-        group.currentMonth += 1;
-
-        //reset member payment status for next month
-        group.members.forEach(member => {
+        // Move group to next month and reset member payment statuses
+        const groupDoc = await Groups.findById(round.groupId);
+        groupDoc.currentMonth += 1;
+        groupDoc.members.forEach(member => {
             member.currentPaymentStatus = "PENDING";
         });
 
-        //check if group cycle finished
-        if (group.currentMonth > group.totalMonths) {
-            group.status = "COMPLETED";
+        // Mark the group as COMPLETED if the full cycle is done
+        if (groupDoc.currentMonth > groupDoc.totalMonths) {
+            groupDoc.status = "COMPLETED";
         }
 
-        await group.save();
+        await groupDoc.save();
 
-        // Final success response
         return res.status(200).json({
             success: true,
             message: "Bidding finalized successfully",
             data: {
-                groupId: group._id,
-                biddingRoundId: round._id,
-                nextMonth: group.currentMonth,
-                groupStatus: group.status,
-                totalMonths: group.totalMonths
+                groupId: groupDoc._id,
+                biddingRoundId: roundDoc._id,
+                nextMonth: groupDoc.currentMonth,
+                groupStatus: groupDoc.status,
+                totalMonths: groupDoc.totalMonths
             }
         });
 
