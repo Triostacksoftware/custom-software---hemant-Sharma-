@@ -8,14 +8,12 @@ import {
     Users,
     IndianRupeeIcon,
     Clock,
-    Activity,
     X,
     UserPlus,
     Search,
     Play,
     Award,
     TrendingUp,
-    CheckCircle,
     AlertCircle,
     Loader
 } from 'lucide-react';
@@ -31,7 +29,6 @@ const GroupDetails = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    // Bidding state
     const [biddingRound, setBiddingRound] = useState(null);
     const [bids, setBids] = useState([]);
     const [loadingBidding, setLoadingBidding] = useState(false);
@@ -39,44 +36,28 @@ const GroupDetails = () => {
     const [biddingSuccess, setBiddingSuccess] = useState('');
     const [socket, setSocket] = useState(null);
 
-    // Pending members shown when finalize is blocked
-    // Shape: [{ name, phoneNumber, type, required, paid, remaining }]
     const [finalizePendingMembers, setFinalizePendingMembers] = useState([]);
 
-    // Tie resolution state
     const [tieModalOpen, setTieModalOpen] = useState(false);
     const [tiedUsers, setTiedUsers] = useState([]);
     const [selectedWinner, setSelectedWinner] = useState(null);
     const [resolvingTie, setResolvingTie] = useState(false);
 
-    // Add member modal state
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
     const [availableUsers, setAvailableUsers] = useState([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
     const [userSearchTerm, setUserSearchTerm] = useState('');
     const [addingUserId, setAddingUserId] = useState(null);
 
-    // Activate group state
     const [activating, setActivating] = useState(false);
-
-    // General success message
     const [successMessage, setSuccessMessage] = useState('');
 
-    // History modal state
     const [selectedMember, setSelectedMember] = useState(null);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-    useEffect(() => {
-        fetchGroupDetails();
-    }, [groupId]);
+    useEffect(() => { fetchGroupDetails(); }, [groupId]);
+    useEffect(() => { if (groupData) fetchCurrentBiddingRound(); }, [groupData]);
 
-    useEffect(() => {
-        if (groupData) {
-            fetchCurrentBiddingRound();
-        }
-    }, [groupData]);
-
-    // Socket connection when bidding round is OPEN
     useEffect(() => {
         if (biddingRound && biddingRound.status === 'OPEN') {
             const newSocket = io(SOCKET_URL);
@@ -128,9 +109,7 @@ const GroupDetails = () => {
             const response = await adminApi.bidding.getCurrentRound(groupId);
             setBiddingRound(response.data.data);
         } catch (err) {
-            if (err.response?.status !== 404) {
-                console.error('Failed to fetch bidding round:', err);
-            }
+            if (err.response?.status !== 404) console.error('Failed to fetch bidding round:', err);
             setBiddingRound(null);
         } finally {
             setLoadingBidding(false);
@@ -148,9 +127,7 @@ const GroupDetails = () => {
 
     const handleOpenBidding = async () => {
         try {
-            setBiddingError('');
-            setBiddingSuccess('');
-            setFinalizePendingMembers([]);
+            setBiddingError(''); setBiddingSuccess(''); setFinalizePendingMembers([]);
             await adminApi.bidding.open(groupId);
             setBiddingSuccess('Bidding opened successfully!');
             fetchCurrentBiddingRound();
@@ -162,9 +139,7 @@ const GroupDetails = () => {
     const handleCloseBidding = async () => {
         if (!biddingRound) return;
         try {
-            setBiddingError('');
-            setBiddingSuccess('');
-            setFinalizePendingMembers([]);
+            setBiddingError(''); setBiddingSuccess(''); setFinalizePendingMembers([]);
             const response = await adminApi.bidding.close(biddingRound._id);
             if (response.data.tie) {
                 setTiedUsers(response.data.tiedUsers);
@@ -195,12 +170,7 @@ const GroupDetails = () => {
 
     const handleFinalizeBidding = async () => {
         if (!biddingRound) return;
-
-        // Clear previous finalize feedback before retrying
-        setBiddingError('');
-        setBiddingSuccess('');
-        setFinalizePendingMembers([]);
-
+        setBiddingError(''); setBiddingSuccess(''); setFinalizePendingMembers([]);
         try {
             await adminApi.bidding.finalize(biddingRound._id);
             setBiddingSuccess('Bidding finalized and group moved to next month!');
@@ -208,22 +178,13 @@ const GroupDetails = () => {
             fetchCurrentBiddingRound();
         } catch (err) {
             const data = err.response?.data;
-
-            // Show the generic error message
             setBiddingError(data?.message || 'Failed to finalize bidding');
-
-            // If the backend returned a list of members with incomplete payments,
-            // display them so the admin knows exactly who is still pending.
-            if (data?.pendingMembers?.length) {
-                setFinalizePendingMembers(data.pendingMembers);
-            }
+            if (data?.pendingMembers?.length) setFinalizePendingMembers(data.pendingMembers);
         }
     };
 
     const handleActivateGroup = async () => {
-        if (!window.confirm('Are you sure you want to activate this group? This action cannot be undone.')) {
-            return;
-        }
+        if (!window.confirm('Are you sure you want to activate this group? This action cannot be undone.')) return;
         setActivating(true);
         try {
             await adminApi.groups.activate(groupId);
@@ -246,9 +207,7 @@ const GroupDetails = () => {
             const allUsers = response.data.data.members || [];
             const currentMemberIds = members.map(m => m.userId);
             const eligible = allUsers.filter(
-                user =>
-                    user.approvalStatus === 'APPROVED' &&
-                    !currentMemberIds.includes(user._id)
+                u => u.approvalStatus === 'APPROVED' && !currentMemberIds.includes(u._id)
             );
             setAvailableUsers(eligible);
         } catch (err) {
@@ -320,28 +279,21 @@ const GroupDetails = () => {
     const isDraft = group.status === 'DRAFT';
     const isFull = members.length === group.totalMembers;
 
-    const filteredUsers = availableUsers.filter(user =>
-        user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-        user.phoneNumber.includes(userSearchTerm)
+    const filteredUsers = availableUsers.filter(u =>
+        u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+        u.phoneNumber.includes(userSearchTerm)
     );
 
     return (
         <div className="group-details-page">
 
-            {/* ── Global feedback messages ── */}
-            {successMessage && (
-                <div className="success-message">{successMessage}</div>
-            )}
-            {biddingSuccess && (
-                <div className="success-message">{biddingSuccess}</div>
-            )}
+            {successMessage && <div className="success-message">{successMessage}</div>}
+            {biddingSuccess && <div className="success-message">{biddingSuccess}</div>}
             {biddingError && (
-                <div className="error-message">
-                    <AlertCircle size={18} /> {biddingError}
-                </div>
+                <div className="error-message"><AlertCircle size={18} /> {biddingError}</div>
             )}
 
-            {/* ── Pending members panel — shown when finalize is blocked ── */}
+            {/* Finalize blocked — pending members panel */}
             {finalizePendingMembers.length > 0 && (
                 <div className="finalize-pending-panel">
                     <div className="finalize-pending-header">
@@ -354,12 +306,8 @@ const GroupDetails = () => {
                     <table className="finalize-pending-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Phone</th>
-                                <th>Type</th>
-                                <th>Required</th>
-                                <th>Paid</th>
-                                <th>Remaining</th>
+                                <th>Name</th><th>Phone</th><th>Type</th>
+                                <th>Required</th><th>Paid</th><th>Remaining</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -374,9 +322,7 @@ const GroupDetails = () => {
                                     </td>
                                     <td>{formatCurrency(m.required)}</td>
                                     <td>{formatCurrency(m.paid)}</td>
-                                    <td className="remaining-cell">
-                                        {formatCurrency(m.remaining)}
-                                    </td>
+                                    <td className="remaining-cell">{formatCurrency(m.remaining)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -384,7 +330,7 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* ── Header ── */}
+            {/* Header */}
             <div className="group-details-header">
                 <button className="back-btn" onClick={() => navigate('/admin/groups')}>
                     <ArrowLeft size={18} /> Back to Groups
@@ -398,11 +344,7 @@ const GroupDetails = () => {
                         </button>
                     )}
                     {isDraft && isFull && (
-                        <button
-                            className="activate-btn"
-                            onClick={handleActivateGroup}
-                            disabled={activating}
-                        >
+                        <button className="activate-btn" onClick={handleActivateGroup} disabled={activating}>
                             {activating
                                 ? <><Loader size={18} className="spinner" /> Activating...</>
                                 : <><Play size={18} /> Activate Group</>}
@@ -411,7 +353,7 @@ const GroupDetails = () => {
                 </div>
             </div>
 
-            {/* ── Info Cards ── */}
+            {/* Info Cards */}
             <div className="info-cards">
                 <div className="info-card">
                     <div className="info-icon"><Calendar size={20} /></div>
@@ -457,7 +399,7 @@ const GroupDetails = () => {
                 </div>
             </div>
 
-            {/* ── Bidding Section (ACTIVE groups only) ── */}
+            {/* Bidding Section */}
             {group.status === 'ACTIVE' && (
                 <div className="bidding-section">
                     <h2 className="section-title">Bidding Management</h2>
@@ -474,16 +416,13 @@ const GroupDetails = () => {
                                 </span>
                                 <span className="bidding-month">Month {biddingRound.monthNumber}</span>
                             </div>
-
                             <div className="bidding-details">
 
-                                {/* ── OPEN ── */}
                                 {biddingRound.status === 'OPEN' && (
                                     <>
                                         <p><strong>Started:</strong> {formatDate(biddingRound.startedAt)}</p>
-                                        <p><strong>Ends:</strong>   {formatDate(biddingRound.endedAt)}</p>
+                                        <p><strong>Ends:</strong>    {formatDate(biddingRound.endedAt)}</p>
                                         <p><strong>Bids placed:</strong> {biddingRound.bidsCount}</p>
-
                                         <div className="live-bidding admin">
                                             <h3>Live Bids</h3>
                                             <div className="bid-feed">
@@ -500,14 +439,12 @@ const GroupDetails = () => {
                                                 )}
                                             </div>
                                         </div>
-
                                         <button className="action-btn close" onClick={handleCloseBidding}>
                                             Close Bidding
                                         </button>
                                     </>
                                 )}
 
-                                {/* ── PAYMENT_OPEN ── */}
                                 {biddingRound.status === 'PAYMENT_OPEN' && (
                                     <>
                                         <p><strong>Winner:</strong>              {biddingRound.winnerName}</p>
@@ -515,17 +452,12 @@ const GroupDetails = () => {
                                         <p><strong>Payable per Member:</strong>  {formatCurrency(biddingRound.payablePerMember)}</p>
                                         <p><strong>Winner Receivable:</strong>   {formatCurrency(biddingRound.winnerReceivableAmount)}</p>
                                         <p><strong>Dividend per Member:</strong> {formatCurrency(biddingRound.dividendPerMember)}</p>
-
-                                        <button
-                                            className="action-btn finalize"
-                                            onClick={handleFinalizeBidding}
-                                        >
+                                        <button className="action-btn finalize" onClick={handleFinalizeBidding}>
                                             Finalize Bidding
                                         </button>
                                     </>
                                 )}
 
-                                {/* ── CLOSED with no winner (tie pending or no bids) ── */}
                                 {biddingRound.status === 'CLOSED' && !biddingRound.winnerUserId && (
                                     <>
                                         <p>No bids were placed. Bidding closed.</p>
@@ -535,7 +467,6 @@ const GroupDetails = () => {
                                     </>
                                 )}
 
-                                {/* ── FINALIZED ── */}
                                 {biddingRound.status === 'FINALIZED' && (
                                     <p>Bidding finalized. Group moved to next month.</p>
                                 )}
@@ -552,21 +483,16 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* ── Members Table ── */}
+            {/* Members Table */}
             <div className="members-section">
                 <h2 className="section-title">Members</h2>
                 <div className="members-table-container">
                     <table className="members-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Phone</th>
-                                <th>Total Paid</th>
-                                <th>Expected Till Now</th>
-                                <th>Pending</th>
-                                <th>Current Month Paid</th>
-                                <th>Has Won</th>
-                                <th>Actions</th>
+                                <th>Name</th><th>Phone</th><th>Total Paid</th>
+                                <th>Expected Till Now</th><th>Pending</th>
+                                <th>Current Month Paid</th><th>Has Won</th><th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -586,10 +512,7 @@ const GroupDetails = () => {
                                             : <span className="not-won-badge">—</span>}
                                     </td>
                                     <td>
-                                        <button
-                                            className="history-btn"
-                                            onClick={() => openHistoryModal(member)}
-                                        >
+                                        <button className="history-btn" onClick={() => openHistoryModal(member)}>
                                             History
                                         </button>
                                     </td>
@@ -605,28 +528,37 @@ const GroupDetails = () => {
                 <div className="modal-overlay" onClick={closeHistoryModal}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>Contribution History – {selectedMember.name}</h3>
+                            <h3>Payment History – {selectedMember.name}</h3>
                             <button className="modal-close" onClick={closeHistoryModal}>
                                 <X size={20} />
                             </button>
                         </div>
                         <div className="modal-body">
                             {selectedMember.contributionHistory.length === 0 ? (
-                                <p className="no-history">No contributions recorded yet.</p>
+                                <p className="no-history">No payment records yet.</p>
                             ) : (
                                 <table className="history-table">
                                     <thead>
                                         <tr>
-                                            <th>Month</th><th>Amount</th><th>Mode</th>
-                                            <th>Collected By</th><th>Date</th>
+                                            <th>Month</th>
+                                            <th>Type</th>
+                                            <th>Amount</th>
+                                            <th>Mode</th>
+                                            <th>Handled By</th>
+                                            <th>Date</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {selectedMember.contributionHistory.map((entry, idx) => (
                                             <tr key={idx}>
                                                 <td>Month {entry.monthNumber}</td>
+                                                <td>
+                                                    <span className={`type-badge ${entry.type === 'WINNER_PAYOUT' ? 'payout' : 'contribution'}`}>
+                                                        {entry.type === 'WINNER_PAYOUT' ? 'Payout' : 'Contribution'}
+                                                    </span>
+                                                </td>
                                                 <td>{formatCurrency(entry.amountPaid)}</td>
-                                                <td>{entry.paymentMode}</td>
+                                                <td>{entry.paymentMode || '—'}</td>
                                                 <td>{entry.collectorName || '—'}</td>
                                                 <td>{formatDate(entry.collectedAt)}</td>
                                             </tr>
@@ -639,7 +571,7 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* ── Add Member Modal ── */}
+            {/* Add Member Modal */}
             {showAddMemberModal && (
                 <div className="modal-overlay" onClick={() => setShowAddMemberModal(false)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -670,18 +602,18 @@ const GroupDetails = () => {
                                     {filteredUsers.length === 0 ? (
                                         <p className="no-users">No eligible approved users found.</p>
                                     ) : (
-                                        filteredUsers.map(user => (
-                                            <div key={user._id} className="user-item">
+                                        filteredUsers.map(u => (
+                                            <div key={u._id} className="user-item">
                                                 <div className="user-info">
-                                                    <span className="user-name">{user.name}</span>
-                                                    <span className="user-phone">{user.phoneNumber}</span>
+                                                    <span className="user-name">{u.name}</span>
+                                                    <span className="user-phone">{u.phoneNumber}</span>
                                                 </div>
                                                 <button
                                                     className="add-user-btn"
-                                                    onClick={() => handleAddMember(user._id)}
-                                                    disabled={addingUserId === user._id}
+                                                    onClick={() => handleAddMember(u._id)}
+                                                    disabled={addingUserId === u._id}
                                                 >
-                                                    {addingUserId === user._id
+                                                    {addingUserId === u._id
                                                         ? <span className="spinner-small"></span>
                                                         : 'Add'}
                                                 </button>
@@ -695,7 +627,7 @@ const GroupDetails = () => {
                 </div>
             )}
 
-            {/* ── Tie Resolution Modal ── */}
+            {/* Tie Resolution Modal */}
             {tieModalOpen && (
                 <div className="modal-overlay" onClick={() => setTieModalOpen(false)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -708,15 +640,15 @@ const GroupDetails = () => {
                         <div className="modal-body">
                             <p>Multiple users placed the highest bid. Please select the winner:</p>
                             <div className="tie-user-list">
-                                {tiedUsers.map(user => (
-                                    <label key={user.userId} className="tie-user-item">
+                                {tiedUsers.map(u => (
+                                    <label key={u.userId} className="tie-user-item">
                                         <input
                                             type="radio"
                                             name="winner"
-                                            value={user.userId}
-                                            onChange={() => setSelectedWinner(user.userId)}
+                                            value={u.userId}
+                                            onChange={() => setSelectedWinner(u.userId)}
                                         />
-                                        <span>{user.name} – Bid: {formatCurrency(user.bidAmount)}</span>
+                                        <span>{u.name} – Bid: {formatCurrency(u.bidAmount)}</span>
                                     </label>
                                 ))}
                             </div>

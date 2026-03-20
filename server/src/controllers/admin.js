@@ -836,12 +836,11 @@ exports.rejectEmployee = async (req, res, next) => {
 };
 
 
-//controller to get full group details including member financial stats
+// Controller to get full group details including member financial stats
 exports.getGroupDetails = async (req, res, next) => {
     try {
         const { groupId } = req.params;
 
-        //Validate groupId
         if (!mongoose.Types.ObjectId.isValid(groupId)) {
             return res.status(400).json({
                 success: false,
@@ -849,9 +848,9 @@ exports.getGroupDetails = async (req, res, next) => {
             });
         }
 
-        //Fetch group
+        //fetch group
         const group = await Groups.findById(groupId)
-            .populate("members.userId", "name phone")
+            .populate("members.userId", "name phoneNumber")
             .select("-__v")
             .lean();
 
@@ -862,7 +861,7 @@ exports.getGroupDetails = async (req, res, next) => {
             });
         }
 
-        const { members, currentMonth, totalMembers } = group;
+        const { members, currentMonth } = group;
 
         //Fetch all bidding rounds
         //Needed to calculate expected contributions
@@ -870,13 +869,11 @@ exports.getGroupDetails = async (req, res, next) => {
             .select("monthNumber payablePerMember winnerUserId")
             .lean();
 
-        // Aggregate all contribution transactions
-        // Only COMPLETED contributions are counted
-        const contributionAgg = await Transaction.aggregate([
+        //match BOTH transaction types
+        const transactionAgg = await Transaction.aggregate([
             {
                 $match: {
                     groupId: new mongoose.Types.ObjectId(groupId),
-                    type: "CONTRIBUTION",
                     status: "COMPLETED"
                 }
             },
@@ -892,20 +889,37 @@ exports.getGroupDetails = async (req, res, next) => {
             {
                 $group: {
                     _id: "$userId",
-                    totalPaid: { $sum: "$amount" },
+
+                    // Sum contributions only (winner pays no contribution)
+                    totalPaid: {
+                        $sum: {
+                            $cond: [{ $eq: ["$type", "CONTRIBUTION"] }, "$amount", 0]
+                        }
+                    },
+
+                    // Current-month contribution for the financial summary cards
                     currentMonthPaid: {
                         $sum: {
                             $cond: [
-                                { $eq: ["$monthNumber", currentMonth] },
+                                {
+                                    $and: [
+                                        { $eq: ["$monthNumber", currentMonth] },
+                                        { $eq: ["$type", "CONTRIBUTION"] }
+                                    ]
+                                },
                                 "$amount",
                                 0
                             ]
                         }
                     },
+
+                    // Full payment history — contributions AND payouts in one array.
+                    // `type` field added so the frontend can label each row.
                     contributionHistory: {
                         $push: {
                             monthNumber: "$monthNumber",
                             amountPaid: "$amount",
+                            type: "$type",         // "CONTRIBUTION" | "WINNER_PAYOUT"
                             paymentMode: "$paymentMode",
                             collectedAt: "$handledAt",
                             collectorName: "$collector.name"
@@ -915,44 +929,36 @@ exports.getGroupDetails = async (req, res, next) => {
             }
         ]);
 
-        // Convert aggregation result to map for fast lookup
-        const contributionMap = new Map(
-            contributionAgg.map(item => [item._id.toString(), item])
+        const transactionMap = new Map(
+            transactionAgg.map(item => [item._id.toString(), item])
         );
 
         let totalCollected = 0;
         let currentMonthCollection = 0;
 
-        //Build member response
         const membersResponse = members.map(member => {
 
             const userId = member.userId?._id?.toString();
+            const txData = transactionMap.get(userId) || {};
 
-            const contributionData = contributionMap.get(userId) || {};
-
-            const totalPaid = contributionData.totalPaid || 0;
-            const history = contributionData.contributionHistory || [];
-            const currentMonthPaid = contributionData.currentMonthPaid || 0;
+            const totalPaid = txData.totalPaid || 0;
+            const currentMonthPaid = txData.currentMonthPaid || 0;
+            const history = txData.contributionHistory || [];
 
             totalCollected += totalPaid;
             currentMonthCollection += currentMonthPaid;
 
-            // Calculate expected contribution
             let expectedTillNow = 0;
-
             biddingRounds.forEach(round => {
-
-                // Skip winner's contribution
                 if (round.winnerUserId?.toString() !== userId) {
                     expectedTillNow += round.payablePerMember || 0;
                 }
-
             });
 
             return {
                 userId,
                 name: member.userId?.name || "Unknown User",
-                phone: member.userId?.phone || null,
+                phone: member.userId?.phoneNumber || null,
                 hasWon: member.hasWon,
                 winningMonth: member.winningMonth,
                 totalPaid,
@@ -960,12 +966,10 @@ exports.getGroupDetails = async (req, res, next) => {
                 expectedTillNow,
                 pendingAmount: Math.max(0, expectedTillNow - totalPaid),
                 currentMonthPaid,
-                contributionHistory: history
+                contributionHistory: history   // now contains both types
             };
-
         });
 
-        //Financial summary
         const winnersCount = members.filter(m => m.hasWon).length;
 
         return res.status(200).json({
@@ -1060,7 +1064,7 @@ exports.getMemberDetails = async (req, res, next) => {
                         paymentHistory: {
                             $push: {
                                 monthNumber: "$monthNumber",
-                                amount: "$amount",
+                                amountPaid: "$amount",
                                 type: "$type",
                                 paymentMode: "$paymentMode",
                                 collectedAt: "$handledAt",

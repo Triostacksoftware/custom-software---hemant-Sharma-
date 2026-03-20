@@ -697,25 +697,38 @@ exports.getGroupDetails = async (req, res, next) => {
 
         }
 
-        //Build bidding history from all past rounds
-        //Only include rounds before the current month (completed rounds)
-        const biddingHistory = rounds
-            .filter(r => r.monthNumber < group.currentMonth)
-            .map(round => {
+        // ── FIX: Build bidding history from the Bid collection ────────────────
+        //
+        // Previously this code read userBid from round.bids[]:
+        //   const userBid = round.bids?.find(b => b.userId.toString() === userId.toString())
+        //
+        // But bids are stored in a separate Bid collection, NOT embedded in the
+        // BiddingRound document. So round.bids was always undefined, userBid was
+        // always null, and "Your Bid" showed "—" for every past round.
+        //
+        // Fix: fetch all Bid documents for past rounds in one query, build a
+        // roundId → bidAmount map, then look up each round from that map.
+        // ─────────────────────────────────────────────────────────────────────
+        const pastRounds = rounds.filter(r => r.monthNumber < group.currentMonth);
+        const pastRoundIds = pastRounds.map(r => r._id);
 
-                // Find this user's bid in each past round (if any)
-                const userBid = round.bids?.find(
-                    b => b.userId.toString() === userId.toString()
-                );
+        // Fetch this user's bids for all past rounds in a single query
+        const pastUserBids = await Bid.find({
+            biddingRoundId: { $in: pastRoundIds },
+            userId
+        }).lean();
 
-                return {
-                    monthNumber: round.monthNumber,
-                    userBid: userBid ? userBid.bidAmount : null,
-                    winningBid: round.winningBidAmount || null,
-                    winnerUserId: round.winnerUserId || null
-                };
+        // Map: biddingRoundId (string) → bidAmount
+        const userBidMap = new Map(
+            pastUserBids.map(b => [b.biddingRoundId.toString(), b.bidAmount])
+        );
 
-            });
+        const biddingHistory = pastRounds.map(round => ({
+            monthNumber: round.monthNumber,
+            userBid: userBidMap.get(round._id.toString()) ?? null,
+            winningBid: round.winningBidAmount || null,
+            winnerUserId: round.winnerUserId || null
+        }));
 
         //Return the full response
         return res.status(200).json({
