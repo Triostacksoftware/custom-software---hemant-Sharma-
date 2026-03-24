@@ -10,6 +10,8 @@ const userModel = require("./models/user.js");
 const employeeModel = require("./models/employee.js");
 const groupModel = require("./models/group.js");
 const transactionModel = require("./models/transaction.js");
+const notificationModel = require("./models/notification.js");
+const adsModel = require("./models/ads.js");
 
 const errorHandler = require("./middleware/error_handler.js");
 

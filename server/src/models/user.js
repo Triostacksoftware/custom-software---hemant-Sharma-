@@ -26,7 +26,12 @@ const userSchema = new Schema({
         type: String,
         enum: ["PENDING", "APPROVED", "REJECTED"],
         default: "PENDING"
+    },
+    pushSubscription: {
+        type: Object,
+        default: null
     }
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

@@ -15,7 +15,7 @@ const biddingRoundSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ["PENDING", "OPEN", "CLOSED", "PAYMENT_OPEN", "COLLECTION_DONE", "FINALIZED"],
+        enum: ["PENDING", "OPEN", "CLOSED", "PAYMENT_OPEN", "COLLECTION_DONE", "FINALIZED", "ADMIN_ROUND"],
         default: "PENDING",
         index: true,
     },
@@ -51,6 +51,15 @@ const biddingRoundSchema = new Schema({
     startedAt: Date,
     endedAt: Date,
     finalizedAt: Date,
+
+    isAdminRound: {
+        type: Boolean,
+        default: false,
+    },
+    adminPayoutAmount: {
+        type: Number,
+        default: 0
+    }
 
 }, { timestamps: true });
 

@@ -21,6 +21,10 @@ import MemberLayout from './components/layout/MemberLayout';
 import MemberDashboard from './pages/member/Dashboard';
 import TransactionHistory from './pages/employee/TransactionHistory';
 import MemberGroupDetails from './pages/member/GroupDetails';
+import GroupsMembers from './pages/member/Groups';
+import RaiseRequest from './pages/member/RaiseRequest';
+import Transactions from './pages/member/Transactions';
+import Bidding from './pages/member/Bidding';
 
 import './App.css';
 
@@ -136,6 +140,34 @@ function App() {
                             <MemberRoute>
                                 <MemberLayout>
                                     <MemberDashboard />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+                        <Route path="/user/groups" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <GroupsMembers />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+                        <Route path="/user/raise-request" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <RaiseRequest />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+                        <Route path="/user/transactions" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <Transactions />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+                        <Route path="/user/bidding" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <Bidding />
                                 </MemberLayout>
                             </MemberRoute>
                         } />

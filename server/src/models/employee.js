@@ -33,7 +33,13 @@ const employeeSchema = new Schema({
         type: String,
         enum: ["EMPLOYEE", "ADMIN"],
         default: "EMPLOYEE"
+    },
+
+    pushSubscription: {
+        type: Object,
+        default: null
     }
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("Employee", employeeSchema);

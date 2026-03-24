@@ -21,6 +21,11 @@ const groupSchema = new Schema({
         type: Number,
         required: true,
     },
+    adminId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+        default: null
+    },
 
     members: [{
         userId: {
@@ -44,6 +49,23 @@ const groupSchema = new Schema({
             type: String,
             enum: ["PENDING", "PARTIAL", "PAID", "OVERDUE"],
             default: "PENDING"
+        }
+    }],
+
+    joinRequests: [{
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true
+        },
+        status: {
+            type: String,
+            enum: ["PENDING", "APPROVED", "REJECTED"],
+            default: "PENDING"
+        },
+        requestedAt: {
+            type: Date,
+            default: Date.now
         }
     }],
 

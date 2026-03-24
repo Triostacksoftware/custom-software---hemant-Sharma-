@@ -8,7 +8,8 @@ const Bid = require("../models/bid.js");
 const Groups = require("../models/group.js");
 const Transaction = require("../models/transaction.js");
 const Employee = require("../models/employee.js");
-
+const Notification = require("../models/notification.js");
+const Ad = require("../models/ads.js");
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
@@ -452,131 +453,400 @@ exports.confirmTransaction = async (req, res, next) => {
 
 
 //controller to get user dashboard data
-exports.getUserDashboard = async (req, res, next) => {
+exports.getDashboardStats = async (req, res, next) => {
     try {
-
         const userId = req.user._id;
+        const userObjId = new mongoose.Types.ObjectId(userId);
 
-        // Fetch user basic details
-        const user = await User.findById(userId)
-            .select("name phoneNumber email")
-            .lean();
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        // Fetch all groups where user is a member
+        // Fetch all active groups this member belongs to
         const groups = await Groups.find({
-            "members.userId": userId
-        }).lean();
+            "members.userId": userId,
+            status: "ACTIVE"
+        }).select("_id currentMonth monthlyContribution").lean();
 
         if (!groups.length) {
             return res.status(200).json({
                 success: true,
-                data: {
-                    user,
-                    stats: {
-                        totalGroups: 0,
-                        totalContribution: 0,
-                        totalWinnings: 0,
-                        pendingPayment: 0
-                    },
-                    groups: []
-                }
+                data: { pendingAmount: 0, receivableAmount: 0 }
             });
         }
 
         const groupIds = groups.map(g => g._id);
 
-        // Fetch all transactions for the user in those groups
-        const transactions = await Transaction.find({
-            userId,
-            groupId: { $in: groupIds }
-        }).lean();
+        // Build a map of groupId -> currentMonth for quick lookup
+        const groupMonthMap = new Map(
+            groups.map(g => [g._id.toString(), g.currentMonth])
+        );
 
-        // Fetch rounds where the user won
-        const winningRounds = await BiddingRound.find({
+        //Fetch all relevant bidding rounds in one query
+        // For pendingAmount: rounds where winnerUserId != userId (member owes contribution)
+        // For receivableAmount: rounds where winnerUserId == userId (member is owed payout)
+        const allRounds = await BiddingRound.find({
             groupId: { $in: groupIds },
-            winnerUserId: userId
-        }).lean();
+            status: { $nin: ["PENDING"] }
+        }).select("groupId monthNumber winnerUserId winnerReceivableAmount payablePerMember isAdminRound").lean();
 
-        // Map groupId -> winning round
-        const winningMap = new Map();
-        winningRounds.forEach(round => {
-            winningMap.set(round.groupId.toString(), round);
+        //Fetch all COMPLETED transactions for this user in one query
+        const completedTransactions = await Transaction.aggregate([
+            {
+                $match: {
+                    userId: userObjId,
+                    groupId: { $in: groupIds.map(id => new mongoose.Types.ObjectId(id)) },
+                    status: "COMPLETED"
+                }
+            },
+            {
+                $group: {
+                    _id: "$type",
+                    total: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        // Build totals from aggregation result
+        const completedMap = {};
+        completedTransactions.forEach(item => {
+            completedMap[item._id] = item.total;
         });
 
-        let totalContribution = 0;
-        let totalWinnings = 0;
-        let pendingPayment = 0;
+        const totalCompletedContributions = completedMap["CONTRIBUTION"] || 0;
+        const totalCompletedPayouts = completedMap["WINNER_PAYOUT"] || 0;
 
-        // Calculate stats from transactions
-        transactions.forEach(tx => {
+        //Calculate gross pending contribution 
+        let grossContributionOwed = 0;
 
-            if (tx.type === "CONTRIBUTION" && tx.status === "COMPLETED") {
-                totalContribution += tx.amount;
+        allRounds.forEach(round => {
+            const currentMonth = groupMonthMap.get(round.groupId.toString());
+            if (!currentMonth) return;
+
+            // Only count rounds up to and including the current month
+            if (round.monthNumber > currentMonth) return;
+
+            // Member owes contribution for every round they did NOT win
+            const memberWonThisRound =
+                round.winnerUserId?.toString() === userId.toString();
+
+            if (!memberWonThisRound) {
+                grossContributionOwed += round.payablePerMember || 0;
             }
-
-            if (tx.type === "WINNER_PAYOUT" && tx.status === "COMPLETED") {
-                totalWinnings += tx.amount;
-            }
-
-            if (tx.status !== "COMPLETED") {
-                pendingPayment += tx.amount;
-            }
-
         });
 
-        // Build group cards
-        const groupCards = await Promise.all(groups.map(async (group) => {
-            const winningRound = winningMap.get(group._id.toString());
+        // pendingAmount = what they owe minus what they've already fully paid
+        const pendingAmount = Math.max(0, grossContributionOwed - totalCompletedContributions);
 
-            // Find current bidding round for this group
-            const currentRound = await BiddingRound.findOne({
-                groupId: group._id,
-                monthNumber: group.currentMonth
-            }).lean();
+        //Calculate receivable amount
+        let grossReceivable = 0;
 
-            const groupData = {
-                groupId: group._id,
-                name: group.name,
-                status: group.status,
-                memberCount: group.members?.length || 0,
-                monthlyContribution: group.monthlyContribution,
-                currentMonth: group.currentMonth,
-                totalMonths: group.totalMonths,
-                hasWon: !!winningRound,
-                biddingStatus: currentRound ? currentRound.status : 'NOT_CREATED',
-            };
+        allRounds.forEach(round => {
+            const memberWonThisRound =
+                round.winnerUserId?.toString() === userId.toString();
 
-            if (winningRound) {
-                groupData.winningAmount = winningRound.winnerReceivableAmount || 0;
+            if (memberWonThisRound) {
+                grossReceivable += round.winnerReceivableAmount || 0;
             }
+        });
 
-            return groupData;
-        }));
+        const receivableAmount = Math.max(0, grossReceivable - totalCompletedPayouts);
 
         return res.status(200).json({
             success: true,
             data: {
-                user,
-                stats: {
-                    totalGroups: groups.length,
-                    totalContribution,
-                    totalWinnings,
-                    pendingPayment
-                },
-                groups: groupCards,
+                pendingAmount,
+                receivableAmount
             }
         });
 
     } catch (error) {
         next(error);
+    }
+};
 
+//controller to get unread notification count
+exports.getUnreadNotificationCount = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+
+        const count = await Notification.countDocuments({
+            recipientId: userId,
+            recipientModel: "User",
+            isRead: false
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: { count }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get active ads
+exports.getActiveAd = async (req, res, next) => {
+    try {
+        const ad = await Ad.findOne({ isActive: true })
+            .sort({ updatedAt: -1 })
+            .lean();
+
+        if (!ad) {
+            return res.status(200).json({
+                success: true,
+                data: null
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                adText: ad.adText,
+                adLink: ad.adLink
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get list of groups
+exports.getGroups = async (req, res, next) => {
+    try {
+        const userId = req.user._id.toString();
+
+        // Single query — fetch all DRAFT and ACTIVE groups.
+        // We deliberately exclude COMPLETED groups since they are not joinable
+        // and irrelevant to a member who is not already in them.
+        const allGroups = await Groups.find({
+            status: { $in: ["DRAFT", "ACTIVE"] }
+        })
+            .select("name monthlyContribution totalMembers status members joinRequests")
+            .lean();
+
+        const myGroups = [];
+        const availableGroups = [];
+
+        allGroups.forEach(group => {
+
+            const isMember = group.members.some(
+                m => m.userId.toString() === userId
+            );
+
+            if (isMember) {
+                // Member is already in this group — add to myGroups with basic details
+                myGroups.push({
+                    _id: group._id,
+                    name: group.name,
+                    monthlyContribution: group.monthlyContribution,
+                    totalMembers: group.totalMembers,
+                    currentMemberCount: group.members.length,
+                    status: group.status
+                });
+            } else {
+                // Member is not in this group — check if they have a pending join request
+                const joinRequest = group.joinRequests?.find(
+                    r => r.userId.toString() === userId
+                );
+
+                // Only show PENDING request status to the member.
+                // APPROVED means they'd already be a member (handled above).
+                // REJECTED means they can request again.
+                const hasRequestedToJoin =
+                    joinRequest?.status === "PENDING";
+
+                const isFull = group.members.length >= group.totalMembers;
+
+                availableGroups.push({
+                    _id: group._id,
+                    name: group.name,
+                    monthlyContribution: group.monthlyContribution,
+                    totalMembers: group.totalMembers,
+                    currentMemberCount: group.members.length,
+                    status: group.status,
+                    isFull,
+                    hasRequestedToJoin
+                });
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: { myGroups, availableGroups }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to request to join a group
+exports.requestToJoinGroup = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+        const { groupId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid group ID"
+            });
+        }
+
+        const group = await Groups.findById(groupId)
+            .select("name status totalMembers members joinRequests")
+            .lean();
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        // COMPLETED groups cannot be joined
+        if (group.status === "COMPLETED") {
+            return res.status(400).json({
+                success: false,
+                message: "This group has already completed and is not accepting requests"
+            });
+        }
+
+        // Already a member
+        const alreadyMember = group.members.some(
+            m => m.userId.toString() === userId.toString()
+        );
+        if (alreadyMember) {
+            return res.status(400).json({
+                success: false,
+                message: "You are already a member of this group"
+            });
+        }
+
+        // Already has a pending request — prevent duplicate requests
+        const existingRequest = group.joinRequests?.find(
+            r => r.userId.toString() === userId.toString() && r.status === "PENDING"
+        );
+        if (existingRequest) {
+            return res.status(400).json({
+                success: false,
+                message: "You have already sent a join request for this group. Please wait for admin approval"
+            });
+        }
+
+        // Group is full — block the request regardless of DRAFT or ACTIVE status.
+        // For ACTIVE groups the message is more specific since they cannot be
+        // added even if admin wanted to.
+        const isFull = group.members.length >= group.totalMembers;
+        if (isFull) {
+            // TODO: send notification to admin that this user showed interest
+            // even though the group is full — to be implemented in notifications phase
+
+            const message = group.status === "ACTIVE"
+                ? "This group is full and no longer accepting new members. Please contact the admin directly"
+                : "This group is currently full. Please contact the admin";
+
+            return res.status(400).json({
+                success: false,
+                message
+            });
+        }
+
+        // All validations passed — push join request into the group's joinRequests array
+        await Groups.findByIdAndUpdate(groupId, {
+            $push: {
+                joinRequests: {
+                    userId,
+                    status: "PENDING",
+                    requestedAt: new Date()
+                }
+            }
+        });
+
+        // TODO: send GROUP_JOIN_REQUEST notification to admin
+        // to be implemented in the notifications phase
+
+        return res.status(200).json({
+            success: true,
+            message: "Join request sent successfully"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get notifications
+exports.getNotifications = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+
+        const unreadOnly = req.query.unreadOnly === "true";
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const skip = unreadOnly ? 0 : (page - 1) * limit;
+
+        // Base filter — always scoped to this member only
+        const filter = {
+            recipientId: userId,
+            recipientModel: "User"
+        };
+
+        if (unreadOnly) {
+            filter.isRead = false;
+        }
+
+        // Run count and fetch in parallel for efficiency.
+        // Count is used by the View All page to render pagination controls.
+        // For the modal (unreadOnly=true) the count is still useful —
+        // frontend can use it to show "5 of 12 unread" if needed.
+        const [notifications, totalCount] = await Promise.all([
+            Notification.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select("title body type groupId isRead status scheduledAt createdAt")
+                .lean(),
+            Notification.countDocuments(filter)
+        ]);
+
+        // Mark fetched unread notifications as read automatically
+        // when the modal opens (unreadOnly=true).
+        // For the View All page we do NOT auto-mark as read —
+        // user may just be browsing, and we want the badge count
+        // to remain accurate until they explicitly view the modal.
+        if (unreadOnly && notifications.length > 0) {
+            const unreadIds = notifications
+                .filter(n => !n.isRead)
+                .map(n => n._id);
+
+            if (unreadIds.length > 0) {
+                await Notification.updateMany(
+                    { _id: { $in: unreadIds } },
+                    { $set: { isRead: true } }
+                );
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                notifications,
+                pagination: {
+                    total: totalCount,
+                    page: unreadOnly ? 1 : page,
+                    limit,
+                    totalPages: Math.ceil(totalCount / limit),
+                    hasNextPage: unreadOnly ? false : page * limit < totalCount
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
     }
 };
 
@@ -697,18 +967,7 @@ exports.getGroupDetails = async (req, res, next) => {
 
         }
 
-        // ── FIX: Build bidding history from the Bid collection ────────────────
-        //
-        // Previously this code read userBid from round.bids[]:
-        //   const userBid = round.bids?.find(b => b.userId.toString() === userId.toString())
-        //
-        // But bids are stored in a separate Bid collection, NOT embedded in the
-        // BiddingRound document. So round.bids was always undefined, userBid was
-        // always null, and "Your Bid" showed "—" for every past round.
-        //
-        // Fix: fetch all Bid documents for past rounds in one query, build a
-        // roundId → bidAmount map, then look up each round from that map.
-        // ─────────────────────────────────────────────────────────────────────
+        //Build bidding history from the Bid collection
         const pastRounds = rounds.filter(r => r.monthNumber < group.currentMonth);
         const pastRoundIds = pastRounds.map(r => r._id);
 
@@ -771,6 +1030,84 @@ exports.getEmployeesForMember = async (req, res, next) => {
             success: true,
             message: "Employees fetched successfully",
             data: { employees }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get the overall transaction history
+exports.getTransactionHistory = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const skip = (page - 1) * limit;
+
+        // Base filter — always scoped to this member only
+        const filter = { userId };
+
+        // Optional filters — only applied if query param is present and valid
+        const VALID_TYPES = ["CONTRIBUTION", "WINNER_PAYOUT"];
+        const VALID_STATUSES = ["USER_CONFIRMED", "COMPLETED", "CANCELLED"];
+
+        if (req.query.type && VALID_TYPES.includes(req.query.type)) {
+            filter.type = req.query.type;
+        }
+        if (req.query.status && VALID_STATUSES.includes(req.query.status)) {
+            filter.status = req.query.status;
+        }
+        if (req.query.groupId) {
+            filter.groupId = req.query.groupId;
+        }
+
+        // Run count and fetch in parallel
+        const [transactions, total] = await Promise.all([
+            Transaction.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate("groupId", "name")
+                .populate("handledBy", "name")
+                .select("amount type status monthNumber createdAt groupId handledBy")
+                .lean(),
+            Transaction.countDocuments(filter)
+        ]);
+
+        // Reshape populated fields to match the expected response format:
+        // groupId -> group, handledBy stays as handledBy
+        const formatted = transactions.map(tx => ({
+            _id: tx._id,
+            amount: tx.amount,
+            type: tx.type,
+            status: tx.status,
+            monthNumber: tx.monthNumber,
+            createdAt: tx.createdAt,
+            group: tx.groupId ? {
+                _id: tx.groupId._id,
+                name: tx.groupId.name
+            } : null,
+            handledBy: tx.handledBy ? {
+                _id: tx.handledBy._id,
+                name: tx.handledBy.name
+            } : null
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                transactions: formatted,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit),
+                    hasNextPage: page * limit < total
+                }
+            }
         });
 
     } catch (error) {
