@@ -36,6 +36,8 @@ export const adminApi = {
             api.post('/admin/employees/reject_employee/', { employeeId }),
         fetchAll: (params = {}) =>
             api.get('/admin/employees/fetch_all', { params }),
+        getHistory: (employeeId, params = {}) =>
+            api.get(`/admin/employees/fetch/history/${employeeId}`, { params }),
     },
 
     // Bidding Actions
@@ -49,10 +51,16 @@ export const adminApi = {
         getBids: (roundId) => api.get(`/admin/bidding/round/${roundId}/bids`),
     },
 
-    // Dashboard Stats
-    dashboard: {
-        stats: () => api.get('/admin/dashboard/stats/'),
-    }
+    // Dashboard Stats (UPDATED ROUTE)
+    getDashboardStats: () => api.get('/admin/dashboard/stats/'),
+
+    // === Notification Endpoints ===
+    getUnreadNotifications: () => api.get('/admin/notifications/unread-count'), // Assuming admin uses the same notification logic
+    getNotificationsList: (unreadOnly = false, limit = 5, page = 1) => {
+        let url = `/admin/notifications?page=${page}&limit=${limit}`;
+        if (unreadOnly) url += `&unreadOnly=true`;
+        return api.get(url);
+    },
 };
 
 export default adminApi;

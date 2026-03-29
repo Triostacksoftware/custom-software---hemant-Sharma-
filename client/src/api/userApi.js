@@ -15,6 +15,8 @@ export const userApi = {
     getAllGroups: () => api.get('/user/groups'),
     requestToJoinGroup: (groupId) => api.post(`/user/groups/${groupId}/join`),
     getGroupDetails: (groupId) => api.get(`/user/groups/${groupId}`),
+    getBiddingDashboard: () => api.get('/user/bidding/dashboard'),
+    getBiddingRoomDetails: (roundId) => api.get(`/user/bidding/room/${roundId}`),
     placeBid: (data) => api.post('/user/bid/place', data),
 
     // === Transaction Endpoints ===
@@ -25,6 +27,9 @@ export const userApi = {
         if (type) url += `&type=${type}`;
         return api.get(url);
     },
+    getPendingDues: () => api.get('/user/requests/pending-dues'),
+    // We will mock this one for now, but you can wire it up later
+    sendNotificationRequest: (data) => api.post('/user/requests/send-notification', data),
 };
 
 export default userApi;

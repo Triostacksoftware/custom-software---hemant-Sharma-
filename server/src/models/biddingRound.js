@@ -59,6 +59,24 @@ const biddingRoundSchema = new Schema({
     adminPayoutAmount: {
         type: Number,
         default: 0
+    },
+    minBid: {
+        type: Number,
+        default: 0
+    },
+    maxBid: {
+        type: Number,
+        default: 0
+    },
+    bidMultiple: {
+        type: Number,
+        default: 1,
+        min: 1
+    },
+    scheduledBiddingDate: {
+        type: Date,
+        default: null,
+        index: true   // indexed — cron queries this field daily
     }
 
 }, { timestamps: true });

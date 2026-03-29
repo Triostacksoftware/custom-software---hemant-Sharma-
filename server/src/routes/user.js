@@ -31,6 +31,12 @@ router.post('/user/groups/:groupId/join', authentication.isMember, userControlle
 //endpoint to fetch group wise user data
 router.get('/user/groups/:groupId', authentication.isMember, userController.getGroupDetails);
 
+//endpoint to fetch summary of all current bidding rounds across member's groups
+router.get('/user/bidding/dashboard', authentication.isMember, userController.getBiddingDashboard);
+
+//endpoint to fetch rules + existing bids for a specific live bidding room
+router.get('/user/bidding/room/:roundId', authentication.isMember, userController.getBiddingRoom);
+
 //endpoint to place a bid
 router.post('/user/bid/place', authentication.isMember, userController.placeBid);
 
@@ -42,6 +48,9 @@ router.get('/member/get_employees', authentication.isMember, userController.getE
 
 //endpoint to fetch overall transaction history (pagination allowed)
 router.get('/user/transactions', authentication.isMember, userController.getTransactionHistory);
+
+//endpoint to fetch per-group pending dues for the raise request page
+router.get('/user/requests/pending-dues', authentication.isMember, userController.getPendingDues);
 
 
 module.exports = router;

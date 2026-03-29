@@ -71,5 +71,8 @@ router.get('/admin/bidding/current/:groupId', authentication.authenticate, authe
 //endpoint to get bid details for a bidding round
 router.get('/admin/bidding/round/:roundId/bids', authentication.authenticate, authentication.isAdmin, adminController.getBidsForRound);
 
+//endpoint to get transaction history logged by a specific employee
+router.get('/admin/employees/fetch/history/:employeeId', authentication.authenticate, authentication.isAdmin, adminController.getEmployeeTransactionHistory);
+
 
 module.exports = router;

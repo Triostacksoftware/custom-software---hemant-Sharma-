@@ -1,345 +1,284 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Check, X, Search, User, Briefcase, ChevronLeft, ChevronRight, AlertTriangle, CheckSquare } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
-import {
-    Search,
-    ChevronLeft,
-    ChevronRight,
-    CheckCircle,
-    XCircle,
-    Users,
-    Briefcase
-} from 'lucide-react';
 import './Approvals.css';
 
 const Approvals = () => {
-    // Tab state: 'users' or 'employees'
-    const [activeTab, setActiveTab] = useState('users');
+    const navigate = useNavigate();
 
-    // Shared state for both tabs
-    const [items, setItems] = useState([]);
-    const [pagination, setPagination] = useState({
-        total: 0,
-        currentPage: 1,
-        totalPages: 0,
-    });
+    // States
+    const [activeTab, setActiveTab] = useState('members'); // 'members' or 'employees'
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
-    const [pageSize, setPageSize] = useState(10);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [actionLoading, setActionLoading] = useState({}); // track per item
+    const [dataList, setDataList] = useState([]);
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedSearch(searchTerm);
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
+    // Pagination & Search States
+    const [searchQuery, setSearchQuery] = useState('');
+    const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, total: 0 });
 
-    // Reset page when tab, search, or pageSize changes
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [activeTab, debouncedSearch, pageSize]);
+    // Action States
+    const [processingId, setProcessingId] = useState(null);
+    const [confirmModal, setConfirmModal] = useState({ show: false, id: null, actionType: '', name: '' });
 
-    // Fetch pending items based on active tab
-    const fetchPending = useCallback(async () => {
+    // Fetch Data Function
+    const fetchData = useCallback(async (page = 1, search = '') => {
+        setLoading(true);
+        setError('');
+
         try {
-            setLoading(true);
-            setError('');
-
-            const params = {
-                page: currentPage,
-                limit: pageSize,
-                search: debouncedSearch || undefined,
-            };
-
             let response;
-            if (activeTab === 'users') {
-                response = await adminApi.users.listPending(params);
+            if (activeTab === 'members') {
+                response = await adminApi.users.listPending({ page, limit: 10, search });
+                if (response.data.success) {
+                    setDataList(response.data.data.users);
+                    setPagination(response.data.data.pagination);
+                }
             } else {
-                response = await adminApi.employees.listPending(params);
+                response = await adminApi.employees.listPending({ page, limit: 10, search });
+                if (response.data.success) {
+                    setDataList(response.data.data.employees);
+                    setPagination(response.data.data.pagination);
+                }
             }
-
-            const { data } = response.data;
-
-            // API returns either 'users' or 'employees' array – adjust accordingly
-            // Based on controller: for users it's probably 'users', for employees it's 'employees'
-            const key = activeTab === 'users' ? 'users' : 'employees';
-            setItems(data[key] || []);
-            setPagination(data.pagination);
         } catch (err) {
-            setError(err.response?.data?.message || `Failed to fetch pending ${activeTab}`);
-            console.error(`Fetch pending ${activeTab} error:`, err);
+            setError(err.response?.data?.message || 'Failed to load pending approvals.');
+            setDataList([]);
         } finally {
             setLoading(false);
         }
-    }, [activeTab, currentPage, pageSize, debouncedSearch]);
+    }, [activeTab]);
 
+    // Initial Fetch & on Tab Change
     useEffect(() => {
-        fetchPending();
-    }, [fetchPending]);
+        fetchData(1, searchQuery);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
 
-    const handleSearchChange = (e) => {
-        setSearchTerm(e.target.value);
+    // Search Handler
+    const handleSearchSubmit = (e) => {
+        e.preventDefault();
+        fetchData(1, searchQuery);
     };
 
+    // Pagination Handler
     const handlePageChange = (newPage) => {
         if (newPage >= 1 && newPage <= pagination.totalPages) {
-            setCurrentPage(newPage);
+            fetchData(newPage, searchQuery);
         }
     };
 
-    const handlePageSizeChange = (e) => {
-        setPageSize(Number(e.target.value));
-        setCurrentPage(1);
+    // Modal Handlers
+    const openConfirmModal = (id, actionType, name) => {
+        setConfirmModal({ show: true, id, actionType, name });
     };
 
-    const handleApprove = async (id, itemName) => {
+    const closeConfirmModal = () => {
+        setConfirmModal({ show: false, id: null, actionType: '', name: '' });
+    };
 
-        // Show confirmation dialog
-        const confirmMessage = `Are you sure you want to approve "${itemName}"?`;
-        if (!window.confirm(confirmMessage)) {
-            return; // User cancelled
-        }
+    const executeAction = async () => {
+        const { id, actionType } = confirmModal;
+        closeConfirmModal();
+        setProcessingId(id);
 
-        setActionLoading(prev => ({ ...prev, [id]: 'approve' }));
         try {
-            if (activeTab === 'users') {
-                await adminApi.users.approve(id);
+            let response;
+            if (activeTab === 'members') {
+                response = actionType === 'approve'
+                    ? await adminApi.users.approve(id)
+                    : await adminApi.users.reject(id);
             } else {
-                await adminApi.employees.approve(id);
+                response = actionType === 'approve'
+                    ? await adminApi.employees.approve(id)
+                    : await adminApi.employees.reject(id);
             }
-            // Remove the approved item from list
-            setItems(prev => prev.filter(item => item._id !== id));
-            // Optionally show success toast – for simplicity, just refresh
-            // Also update total count
-            setPagination(prev => ({
-                ...prev,
-                total: prev.total - 1,
-                totalPages: Math.ceil((prev.total - 1) / pageSize),
-            }));
-        } catch (err) {
-            alert(err.response?.data?.message || 'Failed to approve');
-        } finally {
-            setActionLoading(prev => {
-                const newState = { ...prev };
-                delete newState[id];
-                return newState;
-            });
-        }
-    };
 
-    const handleReject = async (id, itemName) => {
-
-        // Show confirmation dialog
-        const confirmMessage = `Are you sure you want to reject "${itemName}"?`;
-        if (!window.confirm(confirmMessage)) {
-            return; // User cancelled
-        }
-
-        setActionLoading(prev => ({ ...prev, [id]: 'reject' }));
-        try {
-            if (activeTab === 'users') {
-                await adminApi.users.reject(id);
-            } else {
-                await adminApi.employees.reject(id);
+            if (response.data.success) {
+                // Remove the item from the list instantly
+                setDataList(prev => prev.filter(item => item._id !== id));
+                // Update total count
+                setPagination(prev => ({ ...prev, total: prev.total - 1 }));
             }
-            // Remove the rejected item from list
-            setItems(prev => prev.filter(item => item._id !== id));
-            setPagination(prev => ({
-                ...prev,
-                total: prev.total - 1,
-                totalPages: Math.ceil((prev.total - 1) / pageSize),
-            }));
         } catch (err) {
-            alert(err.response?.data?.message || 'Failed to reject');
+            alert(err.response?.data?.message || `Failed to ${actionType}. Please try again.`);
         } finally {
-            setActionLoading(prev => {
-                const newState = { ...prev };
-                delete newState[id];
-                return newState;
-            });
+            setProcessingId(null);
         }
     };
 
     const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-IN', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
+        return new Date(dateString).toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric'
         });
     };
 
     return (
-        <div className="approvals-page">
-            <div className="approvals-header">
-                <div>
-                    <h1 className="approvals-title">Approvals</h1>
-                    <p className="approvals-subtitle">Review and approve pending user and employee registrations</p>
+        <div className="admin-approvals-container">
+            {/* Header */}
+            <header className="dashboard-header groups-header">
+                <div className="header-left">
+                    <button className="elder-back-btn" onClick={() => navigate('/admin/dashboard')}>
+                        <ArrowLeft size={24} /> <span>Back</span>
+                    </button>
                 </div>
-            </div>
+                <div className="header-center">
+                    <h1 className="page-title">Pending Approvals</h1>
+                </div>
+                <div className="header-right"></div>
+            </header>
 
-            {/* Tabs */}
-            <div className="approvals-tabs">
-                <button
-                    className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('users')}
-                >
-                    <Users size={18} />
-                    <span>Users</span>
-                    {!loading && activeTab === 'users' && pagination.total > 0 && (
-                        <span className="tab-count">{pagination.total}</span>
+            <main className="approvals-main-content">
+
+                {/* Tabs & Search Bar */}
+                <div className="approvals-control-panel">
+                    <div className="approvals-tabs">
+                        <button
+                            className={`tab-btn ${activeTab === 'members' ? 'active' : ''}`}
+                            onClick={() => { setActiveTab('members'); setSearchQuery(''); }}
+                        >
+                            <User size={18} /> Pending Members
+                        </button>
+                        <button
+                            className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
+                            onClick={() => { setActiveTab('employees'); setSearchQuery(''); }}
+                        >
+                            <Briefcase size={18} /> Pending Employees
+                        </button>
+                    </div>
+
+                    <form className="admin-search-form" onSubmit={handleSearchSubmit}>
+                        <div className="admin-search-input-wrapper">
+                            <Search size={20} className="admin-search-icon" />
+                            <input
+                                type="text"
+                                placeholder={`Search ${activeTab}...`}
+                                className="admin-search-input"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" className="admin-search-submit-btn">Search</button>
+                    </form>
+                </div>
+
+                {/* List Container */}
+                <section className="elder-section">
+                    <div className="section-header-flex">
+                        <h2 className="elder-section-title">
+                            {activeTab === 'members' ? 'Member Registrations' : 'Employee Registrations'}
+                        </h2>
+                        <span className="total-count-badge">{pagination.total} Total Pending</span>
+                    </div>
+
+                    {loading ? (
+                        <div className="elder-empty-card">
+                            <div className="spinner"></div>
+                            <p className="loading-text">Loading pending approvals...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="elder-empty-card">
+                            <p className="error-text">{error}</p>
+                            <button className="elder-btn-primary" onClick={() => fetchData(pagination.currentPage, searchQuery)}>Retry</button>
+                        </div>
+                    ) : dataList.length === 0 ? (
+                        <div className="elder-empty-card">
+                            <div className="empty-icon-wrapper icon-slate">
+                                <CheckSquare size={48} opacity={0.5} />
+                            </div>
+                            <p>No pending approvals found.</p>
+                            {searchQuery && <p className="sub-empty-text">Try clearing your search filter.</p>}
+                        </div>
+                    ) : (
+                        <div className="elder-list-container">
+                            {dataList.map((person) => (
+                                <div key={person._id} className="elder-list-card approval-card">
+                                    <div className="list-card-left">
+                                        <div className={`icon-wrapper ${activeTab === 'members' ? 'icon-slate' : 'icon-navy'}`}>
+                                            {activeTab === 'members' ? <User size={28} /> : <Briefcase size={28} />}
+                                        </div>
+                                        <div className="list-card-info">
+                                            <h3 className="elder-card-title">{person.name}</h3>
+                                            <div className="person-details-inline">
+                                                <span className="detail-text">{person.phoneNumber || person.phone || 'No phone number'}</span>
+                                            </div>
+                                            <div className="meta-info">
+                                                <span>Registered: {formatDate(person.createdAt)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="list-card-right approval-actions">
+                                        <button
+                                            className="elder-btn-danger-outline"
+                                            disabled={processingId === person._id}
+                                            onClick={() => openConfirmModal(person._id, 'reject', person.name)}
+                                        >
+                                            {processingId === person._id ? '...' : <><X size={18} /> Reject</>}
+                                        </button>
+                                        <button
+                                            className="elder-btn-success-solid"
+                                            disabled={processingId === person._id}
+                                            onClick={() => openConfirmModal(person._id, 'approve', person.name)}
+                                        >
+                                            {processingId === person._id ? 'Processing...' : <><Check size={18} /> Approve</>}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('employees')}
-                >
-                    <Briefcase size={18} />
-                    <span>Employees</span>
-                    {!loading && activeTab === 'employees' && pagination.total > 0 && (
-                        <span className="tab-count">{pagination.total}</span>
-                    )}
-                </button>
-            </div>
+                </section>
 
-            {/* Controls */}
-            <div className="approvals-controls">
-                <div className="search-wrapper">
-                    <Search size={18} className="search-icon" />
-                    <input
-                        type="text"
-                        className="search-input"
-                        placeholder={`Search ${activeTab === 'users' ? 'users' : 'employees'} by name or phone...`}
-                        value={searchTerm}
-                        onChange={handleSearchChange}
-                    />
-                </div>
+                {/* Pagination Controls */}
+                {!loading && dataList.length > 0 && pagination.totalPages > 1 && (
+                    <div className="elder-pagination">
+                        <button
+                            className="page-btn"
+                            disabled={pagination.currentPage === 1}
+                            onClick={() => handlePageChange(pagination.currentPage - 1)}
+                        >
+                            <ChevronLeft size={24} /> Prev
+                        </button>
+                        <span className="page-info">
+                            Page {pagination.currentPage} of {pagination.totalPages}
+                        </span>
+                        <button
+                            className="page-btn"
+                            disabled={pagination.currentPage === pagination.totalPages}
+                            onClick={() => handlePageChange(pagination.currentPage + 1)}
+                        >
+                            Next <ChevronRight size={24} />
+                        </button>
+                    </div>
+                )}
 
-                <div className="page-size-selector">
-                    <label htmlFor="pageSize">Show</label>
-                    <select
-                        id="pageSize"
-                        value={pageSize}
-                        onChange={handlePageSizeChange}
-                        className="page-size-select"
-                    >
-                        <option value={5}>5</option>
-                        <option value={10}>10</option>
-                        <option value={25}>25</option>
-                        <option value={50}>50</option>
-                    </select>
-                    <span>entries</span>
-                </div>
-            </div>
+            </main>
 
-            {/* Error Display */}
-            {error && (
-                <div className="approvals-error">
-                    <strong>Error:</strong> {error}
-                    <button onClick={fetchPending}>Retry</button>
+            {/* Confirmation Modal Overlay */}
+            {confirmModal.show && (
+                <div className="elder-modal-overlay">
+                    <div className="elder-modal-card">
+                        <div className={`modal-icon ${confirmModal.actionType === 'approve' ? 'bg-green-light' : 'bg-red-light'}`}>
+                            {confirmModal.actionType === 'approve' ? <Check size={32} color="#15803d" /> : <AlertTriangle size={32} color="#b91c1c" />}
+                        </div>
+                        <h3>Confirm {confirmModal.actionType === 'approve' ? 'Approval' : 'Rejection'}</h3>
+                        <p>
+                            Are you sure you want to <strong>{confirmModal.actionType}</strong> the registration for <strong>{confirmModal.name}</strong>?
+                            {confirmModal.actionType === 'reject' && ' They will not be able to log in to the platform.'}
+                        </p>
+                        <div className="elder-modal-actions">
+                            <button className="elder-btn-secondary" onClick={closeConfirmModal}>Cancel</button>
+                            <button
+                                className={confirmModal.actionType === 'approve' ? 'elder-btn-success-solid' : 'elder-btn-danger-solid'}
+                                onClick={executeAction}
+                            >
+                                Yes, {confirmModal.actionType}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
-
-            {/* Table */}
-            <div className="approvals-table-container">
-                {loading ? (
-                    <div className="approvals-loading">
-                        <div className="spinner"></div>
-                        <p>Loading pending {activeTab}...</p>
-                    </div>
-                ) : (
-                    <>
-                        <table className="approvals-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Phone Number</th>
-                                    <th>Registered On</th>
-                                    <th className="actions-column">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="4" className="no-data">
-                                            No pending {activeTab} found.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    items.map((item) => (
-                                        <tr key={item._id}>
-                                            <td className="item-name">{item.name}</td>
-                                            <td className="item-phone">{item.phoneNumber}</td>
-                                            <td className="item-date">{formatDate(item.createdAt)}</td>
-                                            <td className="actions-cell">
-                                                <button
-                                                    className="action-btn approve"
-                                                    onClick={() => handleApprove(item._id, item.name)}
-                                                    disabled={actionLoading[item._id]}
-                                                >
-                                                    {actionLoading[item._id] === 'approve' ? (
-                                                        <span className="spinner-small"></span>
-                                                    ) : (
-                                                        <>
-                                                            <CheckCircle size={16} />
-                                                            <span>Approve</span>
-                                                        </>
-                                                    )}
-                                                </button>
-                                                <button
-                                                    className="action-btn reject"
-                                                    onClick={() => handleReject(item._id, item.name)}
-                                                    disabled={actionLoading[item._id]}
-                                                >
-                                                    {actionLoading[item._id] === 'reject' ? (
-                                                        <span className="spinner-small"></span>
-                                                    ) : (
-                                                        <>
-                                                            <XCircle size={16} />
-                                                            <span>Reject</span>
-                                                        </>
-                                                    )}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-
-                        {/* Pagination */}
-                        {pagination.totalPages > 1 && (
-                            <div className="pagination">
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => handlePageChange(currentPage - 1)}
-                                    disabled={currentPage === 1}
-                                >
-                                    <ChevronLeft size={16} />
-                                    Previous
-                                </button>
-
-                                <span className="pagination-info">
-                                    Page {pagination.currentPage} of {pagination.totalPages}
-                                </span>
-
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => handlePageChange(currentPage + 1)}
-                                    disabled={currentPage === pagination.totalPages}
-                                >
-                                    Next
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
         </div>
     );
 };

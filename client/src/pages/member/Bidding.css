@@ -1,0 +1,286 @@
+/* Shared Container */
+.elder-bidding-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2f6 100%);
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+}
+
+.center-content {
+    justify-content: center;
+    align-items: center;
+}
+
+/* === LIST PAGE STYLES === */
+.bidding-main-content {
+    padding: 0 2rem 4rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.bidding-strip-card {
+    cursor: default !important;
+    /* Non-clickable main body */
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-top: 0.25rem;
+}
+
+.text-green {
+    color: #059669;
+}
+
+.text-gray {
+    color: #64748b;
+}
+
+.live-dot {
+    height: 12px;
+    width: 12px;
+    background-color: #ef4444;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    }
+
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}
+
+.enter-room-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #10b981;
+}
+
+.enter-room-btn:hover {
+    background: #059669;
+}
+
+
+/* === LIVE BIDDING ROOM STYLES === */
+.room-container {
+    height: 100vh;
+    overflow: hidden;
+    /* Prevent body scroll, let chat area scroll */
+}
+
+.room-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 0 1rem;
+    height: calc(100vh - 90px);
+}
+
+.room-info-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+}
+
+.info-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1rem;
+    color: #334155;
+}
+
+/* Chat-style Feed */
+.bids-feed-container {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    padding: 1.5rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1rem;
+}
+
+.bids-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.bid-bubble {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    max-width: 80%;
+    padding: 1rem 1.5rem;
+    border-radius: 16px;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.my-bid {
+    align-self: flex-end;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-bottom-right-radius: 4px;
+}
+
+.other-bid {
+    align-self: flex-start;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-bottom-left-radius: 4px;
+}
+
+.highest-bid {
+    border: 2px solid #f59e0b;
+    box-shadow: 0 4px 10px rgba(245, 158, 11, 0.15);
+}
+
+.bid-name {
+    font-size: 0.95rem;
+    color: #64748b;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.my-bid .bid-name {
+    color: #2563eb;
+    text-align: right;
+}
+
+.bid-amount {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #1e293b;
+    letter-spacing: -0.5px;
+}
+
+.bid-time {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-top: 0.5rem;
+    text-align: right;
+}
+
+/* Input Form */
+.place-bid-panel {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.bid-form {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.bid-input-wrapper {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-rupee {
+    position: absolute;
+    left: 1rem;
+    color: #475569;
+}
+
+.elder-bid-input {
+    width: 100%;
+    padding: 1.25rem 1rem 1.25rem 3rem;
+    font-size: 1.4rem;
+    font-weight: 700;
+    border: 2px solid #cbd5e1;
+    border-radius: 12px;
+    color: #1e293b;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.elder-bid-input:focus {
+    border-color: #2563eb;
+}
+
+.submit-bid-btn {
+    padding: 1.25rem 2.5rem;
+    font-size: 1.2rem;
+    border-radius: 12px;
+}
+
+.room-closed-alert {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #dc2626;
+    font-weight: 700;
+    padding: 1rem;
+}
+
+/* === MOBILE === */
+@media (max-width: 768px) {
+    .bidding-strip-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .list-card-left,
+    .list-card-right,
+    .enter-room-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .room-info-panel {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .bid-form {
+        flex-direction: column;
+    }
+
+    .submit-bid-btn {
+        width: 100%;
+    }
+
+    .room-main {
+        height: calc(100vh - 80px);
+    }
+}

@@ -96,8 +96,147 @@ exports.userLogin = async (req, res, next) => {
     }
 };
 
+//controller to get bidding page dashboard
+exports.getBiddingDashboard = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
 
-//controller to place bid
+        // Fetch all active groups this member belongs to
+        const groups = await Groups.find({
+            "members.userId": userId,
+            status: "ACTIVE"
+        }).select("_id name currentMonth").lean();
+
+        if (!groups.length) {
+            return res.status(200).json({
+                success: true,
+                data: []
+            });
+        }
+
+        // Build a map of groupId -> groupName for quick lookup
+        const groupMap = new Map(
+            groups.map(g => [g._id.toString(), g.name])
+        );
+
+        const groupIds = groups.map(g => g._id);
+        const currentMonths = new Map(groups.map(g => [g._id.toString(), g.currentMonth]));
+
+        // Fetch current month's BiddingRound for each group in one query.
+        const rounds = await BiddingRound.find({
+            groupId: { $in: groupIds },
+            status: { $nin: ["FINALIZED", "ADMIN_ROUND", "COLLECTION_DONE"] }
+        })
+            .select("groupId monthNumber status scheduledBiddingDate startedAt endedAt minBid maxBid bidMultiple")
+            .lean();
+
+        // Filter to only current month's round per group
+        const currentRounds = rounds.filter(round => {
+            const currentMonth = currentMonths.get(round.groupId.toString());
+            return round.monthNumber === currentMonth;
+        });
+
+        const data = currentRounds.map(round => ({
+            groupId: round.groupId,
+            groupName: groupMap.get(round.groupId.toString()) || "Unknown Group",
+            biddingRoundId: round._id,
+            status: round.status,
+            scheduledBiddingDate: round.scheduledBiddingDate || null,
+            endedAt: round.endedAt || null
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+//controller to get bidding room data
+exports.getBiddingRoom = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+        const { roundId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(roundId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid round ID"
+            });
+        }
+
+        // Fetch round with group name populated
+        const round = await BiddingRound.findById(roundId)
+            .populate("groupId", "name members")
+            .lean();
+
+        if (!round) {
+            return res.status(404).json({
+                success: false,
+                message: "Bidding round not found"
+            });
+        }
+
+        // Verify this member belongs to the group — prevent accessing
+        // other groups' bidding rooms
+        const isMember = round.groupId?.members?.some(
+            m => m.userId.toString() === userId.toString()
+        );
+
+        if (!isMember) {
+            return res.status(403).json({
+                success: false,
+                message: "You are not a member of this group"
+            });
+        }
+
+        // Only OPEN rounds have a live room to enter
+        if (round.status !== "OPEN") {
+            return res.status(400).json({
+                success: false,
+                message: `Bidding room is not available. Current status: ${round.status}`
+            });
+        }
+
+        // Fetch all bids for this round sorted chronologically
+        const bids = await Bid.find({ biddingRoundId: roundId })
+            .sort({ updatedAt: 1 })
+            .select("userId bidAmount updatedAt")
+            .lean();
+
+        // Shape bids — include userId so frontend can identify own bid,
+        // but do not include member names (keeps bidding anonymous)
+        const formattedBids = bids.map(bid => ({
+            userId: bid.userId,
+            bidAmount: bid.bidAmount,
+            timestamp: bid.updatedAt
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                round: {
+                    _id: round._id,
+                    groupName: round.groupId?.name || "Unknown Group",
+                    status: round.status,
+                    minBid: round.minBid,
+                    maxBid: round.maxBid,
+                    bidMultiple: round.bidMultiple,
+                    endedAt: round.endedAt
+                },
+                bids: formattedBids
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Controller to place bid
 exports.placeBid = async (req, res, next) => {
     try {
         const { biddingRoundId, bidAmount } = req.body;
@@ -130,10 +269,8 @@ exports.placeBid = async (req, res, next) => {
 
         const now = new Date();
 
-        //Auto close if expired
+        // Auto close if expired
         if (now > round.endedAt) {
-
-            // Close round
             round.status = "CLOSED";
             await round.save();
 
@@ -148,7 +285,7 @@ exports.placeBid = async (req, res, next) => {
             });
         }
 
-        //user cannot bid if already won in this group
+        // User cannot bid if already won in this group
         const previousWin = await BiddingRound.findOne({
             groupId: round.groupId,
             winnerUserId: userId
@@ -161,27 +298,35 @@ exports.placeBid = async (req, res, next) => {
             });
         }
 
-        // Validate bid range (10% - 20%)
-        const minBid = round.totalPoolAmount * 0.10;
-        const maxBid = round.totalPoolAmount * 0.20;
+        // Resolve bid constraints
+        // Fall back to 10%/20% for safety
+        const minBid = round.minBid > 0 ? round.minBid : round.totalPoolAmount * 0.10;
+        const maxBid = round.maxBid > 0 ? round.maxBid : round.totalPoolAmount * 0.20;
+        const bidMultiple = round.bidMultiple > 0 ? round.bidMultiple : 1;
 
+        //Rule 1: Bid must be within min/max range
         if (bidAmount < minBid || bidAmount > maxBid) {
             return res.status(400).json({
                 success: false,
-                message: `Bid must be between ${minBid} and ${maxBid}`
+                message: `Bid must be between ₹${minBid} and ₹${maxBid}`
             });
         }
 
-        // Check if user already placed a bid
-        const existingBid = await Bid.findOne({
-            biddingRoundId,
-            userId
-        });
+        // Rule 2: Bid must be an exact multiple of bidMultiple
+        if (bidAmount % bidMultiple !== 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Bid must be a multiple of ₹${bidMultiple} (e.g. ₹${bidMultiple}, ₹${bidMultiple * 2}, ₹${bidMultiple * 3}...)`
+            });
+        }
+
+        // Rule 3: Member's new bid must exceed their own previous bid
+        const existingBid = await Bid.findOne({ biddingRoundId, userId });
 
         if (existingBid && bidAmount <= existingBid.bidAmount) {
             return res.status(400).json({
                 success: false,
-                message: "New bid must be higher than your previous bid"
+                message: `Your new bid must be higher than your previous bid of ₹${existingBid.bidAmount}`
             });
         }
 
@@ -202,12 +347,11 @@ exports.placeBid = async (req, res, next) => {
             }
         ).populate("userId", "name");
 
-        // Emit real-time update
+        // Emit real-time update to all clients in the bidding room
         const io = req.app.get("io");
-
         io.to(biddingRoundId.toString()).emit("newBidPlaced", {
             userId: updatedBid.userId._id,
-            name: updatedBid.userId.name,
+            // name: updatedBid.userId.name,
             bidAmount: updatedBid.bidAmount,
             timestamp: updatedBid.updatedAt
         });
@@ -1108,6 +1252,129 @@ exports.getTransactionHistory = async (req, res, next) => {
                     hasNextPage: page * limit < total
                 }
             }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get pending dues (raise request page)
+exports.getPendingDues = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+        const userObjId = new mongoose.Types.ObjectId(userId);
+
+        // Fetch all active groups this member belongs to
+        const groups = await Groups.find({
+            "members.userId": userId,
+            status: "ACTIVE"
+        }).select("_id name currentMonth").lean();
+
+        if (!groups.length) {
+            return res.status(200).json({
+                success: true,
+                data: []
+            });
+        }
+
+        const groupIds = groups.map(g => g._id);
+
+        // Build groupId -> group map for quick lookup
+        const groupMap = new Map(
+            groups.map(g => [g._id.toString(), g])
+        );
+
+        //Fetch current month's BiddingRound for each group
+        const rounds = await BiddingRound.find({
+            groupId: { $in: groupIds },
+            status: { $in: ["PAYMENT_OPEN", "ADMIN_ROUND"] }
+        }).select("groupId monthNumber status payablePerMember winnerReceivableAmount winnerUserId isAdminRound").lean();
+
+        if (!rounds.length) {
+            return res.status(200).json({
+                success: true,
+                data: []
+            });
+        }
+
+        // Build a map of groupId -> round for quick lookup
+        const roundMap = new Map(
+            rounds.map(r => [r.groupId.toString(), r])
+        );
+
+        const roundIds = rounds.map(r => r._id);
+
+        //Fetch all COMPLETED transactions for this user in these rounds
+        const completedTxAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    userId: userObjId,
+                    biddingRoundId: { $in: roundIds.map(id => new mongoose.Types.ObjectId(id)) },
+                    status: "COMPLETED"
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        biddingRoundId: "$biddingRoundId",
+                        type: "$type"
+                    },
+                    totalPaid: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        // Build map: "roundId_TYPE" -> totalPaid
+        const paidMap = new Map();
+        completedTxAgg.forEach(item => {
+            const key = `${item._id.biddingRoundId.toString()}_${item._id.type}`;
+            paidMap.set(key, item.totalPaid);
+        });
+
+        //Build response
+        const data = [];
+
+        groups.forEach(group => {
+            const round = roundMap.get(group._id.toString());
+
+            // No active payment round for this group — skip
+            if (!round) return;
+
+            // How much this member has already paid this month
+            const paidContribution = paidMap.get(`${round._id.toString()}_CONTRIBUTION`) || 0;
+            const paidPayout = paidMap.get(`${round._id.toString()}_WINNER_PAYOUT`) || 0;
+
+            // Pending contribution — every non-winner member owes payablePerMember.
+            // For ADMIN_ROUND (month 1): winnerUserId is null (admin won),
+            // so member always owes payablePerMember.
+            const isCurrentRoundWinner =
+                round.winnerUserId?.toString() === userId.toString();
+
+            const pendingContribution = isCurrentRoundWinner
+                ? 0
+                : Math.max(0, (round.payablePerMember || 0) - paidContribution);
+
+            // Pending payout — only non-zero if this member won this round
+            const pendingPayout = isCurrentRoundWinner
+                ? Math.max(0, (round.winnerReceivableAmount || 0) - paidPayout)
+                : 0;
+
+            // Only include groups where something is still pending
+            if (pendingContribution === 0 && pendingPayout === 0) return;
+
+            data.push({
+                groupId: group._id,
+                groupName: group.name,
+                pendingContribution,
+                pendingPayout
+            });
+        });
+
+        return res.status(200).json({
+            success: true,
+            data
         });
 
     } catch (error) {

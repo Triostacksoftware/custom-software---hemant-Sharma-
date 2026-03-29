@@ -69,121 +69,201 @@ exports.adminLogin = async (req, res, next) => {
 
 //controller to fetch admin dashboard stats
 exports.getDashboardStats = async (req, res, next) => {
-    // try {
-    //     const [
-    //         groupTotal,
-    //         groupActive,
-    //         groupDraft,
-    //         groupCompleted,
-
-    //         userTotal,
-    //         userPending,
-    //         userApproved,
-    //         userRejected,
-
-    //         employeeTotal,
-    //         employeePending,
-    //         employeeApproved,
-    //         employeeRejected,
-
-    //     ] = await Promise.all([
-    //         //groups
-    //         Groups.countDocuments(),
-    //         Groups.countDocuments({ status: "ACTIVE" }),
-    //         Groups.countDocuments({ status: "DRAFT" }),
-    //         Groups.countDocuments({ status: "COMPLETED" }),
-
-    //         //users
-    //         User.countDocuments(),
-    //         User.countDocuments({ approvalStatus: "PENDING" }),
-    //         User.countDocuments({ approvalStatus: "APPROVED" }),
-    //         User.countDocuments({ approvalStatus: "REJECTED" }),
-
-    //         //employees
-    //         Employee.countDocuments(),
-    //         Employee.countDocuments({ approvalStatus: "PENDING" }),
-    //         Employee.countDocuments({ approvalStatus: "APPROVED" }),
-    //         Employee.countDocuments({ approvalStatus: "REJECTED" }),
-
-    //     ]);
-
-    //     return res.status(200).json({
-    //         success: true,
-    //         data: {
-    //             groups: {
-    //                 total: groupTotal,
-    //                 active: groupActive,
-    //                 draft: groupDraft,
-    //                 completed: groupCompleted,
-    //             },
-    //             users: {
-    //                 total: userTotal,
-    //                 pending: userPending,
-    //                 approved: userApproved,
-    //                 rejected: userRejected,
-    //             },
-    //             employees: {
-    //                 total: employeeTotal,
-    //                 pending: employeePending,
-    //                 approved: employeeApproved,
-    //                 rejected: employeeRejected,
-    //             },
-    //         },
-    //     });
-
-    // } catch (error) {
-
-    //     next(error);
-    // }
-
-
-    //optimized approach
     try {
-        // run 3 parallel aggregations (one for each collection)
-        const [groupStats, userStats, employeeStats] = await Promise.all([
-            Groups.aggregate([
+
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // ── Round 1: all independent queries fire together ────────────────────
+        const [
+            groupStats,
+            userStats,
+            employeeStats,
+            transactionStats,
+            liveBiddingRooms,
+            activeGroups
+        ] = await Promise.all([
+
+            // Existing: group / user / employee counts via $facet
+            Groups.aggregate([{
+                $facet: {
+                    total: [{ $count: "count" }],
+                    active: [{ $match: { status: "ACTIVE" } }, { $count: "count" }],
+                    draft: [{ $match: { status: "DRAFT" } }, { $count: "count" }],
+                    completed: [{ $match: { status: "COMPLETED" } }, { $count: "count" }],
+                }
+            }]),
+
+            User.aggregate([{
+                $facet: {
+                    total: [{ $count: "count" }],
+                    pending: [{ $match: { approvalStatus: "PENDING" } }, { $count: "count" }],
+                    approved: [{ $match: { approvalStatus: "APPROVED" } }, { $count: "count" }],
+                    rejected: [{ $match: { approvalStatus: "REJECTED" } }, { $count: "count" }],
+                }
+            }]),
+
+            Employee.aggregate([{
+                $facet: {
+                    total: [{ $count: "count" }],
+                    pending: [{ $match: { approvalStatus: "PENDING" } }, { $count: "count" }],
+                    approved: [{ $match: { approvalStatus: "APPROVED" } }, { $count: "count" }],
+                    rejected: [{ $match: { approvalStatus: "REJECTED" } }, { $count: "count" }],
+                }
+            }]),
+
+            // Today's and this month's COMPLETED contribution totals
+            Transaction.aggregate([
+                {
+                    $match: {
+                        type: "CONTRIBUTION",
+                        status: "COMPLETED"
+                    }
+                },
                 {
                     $facet: {
-                        total: [{ $count: "count" }],
-                        active: [{ $match: { status: "ACTIVE" } }, { $count: "count" }],
-                        draft: [{ $match: { status: "DRAFT" } }, { $count: "count" }],
-                        completed: [{ $match: { status: "COMPLETED" } }, { $count: "count" }],
-                    },
-                },
+                        today: [
+                            { $match: { handledAt: { $gte: startOfToday } } },
+                            { $group: { _id: null, total: { $sum: "$amount" } } }
+                        ],
+                        thisMonth: [
+                            { $match: { handledAt: { $gte: startOfThisMonth } } },
+                            { $group: { _id: null, total: { $sum: "$amount" } } }
+                        ]
+                    }
+                }
             ]),
 
-            User.aggregate([
-                {
-                    $facet: {
-                        total: [{ $count: "count" }],
-                        pending: [{ $match: { approvalStatus: "PENDING" } }, { $count: "count" }],
-                        approved: [{ $match: { approvalStatus: "APPROVED" } }, { $count: "count" }],
-                        rejected: [{ $match: { approvalStatus: "REJECTED" } }, { $count: "count" }],
-                    },
-                },
-            ]),
+            // Count of live bidding rooms
+            BiddingRound.countDocuments({ status: "OPEN" }),
 
-            Employee.aggregate([
-                {
-                    $facet: {
-                        total: [{ $count: "count" }],
-                        pending: [{ $match: { approvalStatus: "PENDING" } }, { $count: "count" }],
-                        approved: [{ $match: { approvalStatus: "APPROVED" } }, { $count: "count" }],
-                        rejected: [{ $match: { approvalStatus: "REJECTED" } }, { $count: "count" }],
-                    },
-                },
-            ]),
+            // Active groups with currentMonth — needed for Round 2
+            Groups.find({ status: "ACTIVE" })
+                .select("_id currentMonth totalMembers")
+                .lean()
         ]);
 
-        // Extract results directly
-        // aggregate returns an array, so we look at index [0]
+        // ── Round 2: fetch current payment-phase rounds for active groups ──────
+        const groupIds = activeGroups.map(g => g._id);
+        const groupMonthMap = new Map(activeGroups.map(g => [g._id.toString(), g]));
+
+        const currentRounds = groupIds.length
+            ? await BiddingRound.find({
+                groupId: { $in: groupIds },
+                status: { $in: ["PAYMENT_OPEN", "ADMIN_ROUND"] }
+            }).select("_id groupId monthNumber status payablePerMember winnerReceivableAmount winnerUserId").lean()
+            : [];
+
+        // Filter to only rounds matching the group's current month
+        const activePaymentRounds = currentRounds.filter(r => {
+            const group = groupMonthMap.get(r.groupId.toString());
+            return group && r.monthNumber === group.currentMonth;
+        });
+
+        // ── Round 3: aggregate COMPLETED transactions for those rounds ─────────
+        const roundIds = activePaymentRounds.map(r => r._id);
+
+        const txAgg = roundIds.length
+            ? await Transaction.aggregate([
+                {
+                    $match: {
+                        biddingRoundId: { $in: roundIds.map(id => new mongoose.Types.ObjectId(id)) },
+                        status: "COMPLETED"
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            biddingRoundId: "$biddingRoundId",
+                            userId: "$userId",
+                            type: "$type"
+                        },
+                        totalPaid: { $sum: "$amount" }
+                    }
+                }
+            ])
+            : [];
+
+        // ── Financial calculations ─────────────────────────────────────────────
+        let pendingCollectionThisMonth = 0;
+        let pendingPayoutThisMonth = 0;
+        let membersToCollectFromCount = 0;
+        let membersToPay = 0;
+
+        activePaymentRounds.forEach(round => {
+            const group = groupMonthMap.get(round.groupId.toString());
+            if (!group) return;
+
+            // ── Pending payout — winner only ──────────────────────────────────
+            if (round.winnerUserId) {
+                const winnerTx = txAgg.find(
+                    item =>
+                        item._id.biddingRoundId.toString() === round._id.toString() &&
+                        item._id.userId.toString() === round.winnerUserId.toString() &&
+                        item._id.type === "WINNER_PAYOUT"
+                );
+                const paidPayout = winnerTx?.totalPaid || 0;
+                const pending = Math.max(0, (round.winnerReceivableAmount || 0) - paidPayout);
+
+                if (pending > 0) {
+                    pendingPayoutThisMonth += pending;
+                    membersToPay++;
+                }
+            }
+
+            // ── Pending contributions — all non-winner members ────────────────
+            // Get all per-member contribution payments for this round
+            const contributionTxs = txAgg.filter(
+                item =>
+                    item._id.biddingRoundId.toString() === round._id.toString() &&
+                    item._id.type === "CONTRIBUTION"
+            );
+
+            let totalPaidContribution = 0;
+            let membersPaidFull = 0;
+
+            contributionTxs.forEach(item => {
+                totalPaidContribution += item.totalPaid;
+                if (item.totalPaid >= (round.payablePerMember || 0)) {
+                    membersPaidFull++;
+                }
+            });
+
+            // For ADMIN_ROUND (month 1): winnerUserId is null (admin won),
+            // all members pay full monthlyContribution = payablePerMember
+            const nonWinnerCount = group.totalMembers;
+            const expectedTotal = (round.payablePerMember || 0) * nonWinnerCount;
+            const pendingTotal = Math.max(0, expectedTotal - totalPaidContribution);
+
+            pendingCollectionThisMonth += pendingTotal;
+            membersToCollectFromCount += Math.max(0, nonWinnerCount - membersPaidFull);
+        });
+
+        // ── Shape response ────────────────────────────────────────────────────
         const g = groupStats[0];
         const u = userStats[0];
         const e = employeeStats[0];
+        const t = transactionStats[0];
 
         return res.status(200).json({
             success: true,
             data: {
+                stats: {
+                    totalGroups: g.total[0]?.count || 0,
+                    totalMembers: u.approved[0]?.count || 0,
+                    pendingCollectionThisMonth,
+                    pendingPayoutThisMonth,
+                    todaysCollection: t.today[0]?.total || 0,
+                    thisMonthsCollection: t.thisMonth[0]?.total || 0,
+                },
+                actionBadges: {
+                    membersToCollectFrom: membersToCollectFromCount,
+                    membersToPay,
+                    liveBiddingRooms
+                },
+
+                // Kept from existing controller — used by other admin UI screens
                 groups: {
                     total: g.total[0]?.count || 0,
                     active: g.active[0]?.count || 0,
@@ -201,12 +281,11 @@ exports.getDashboardStats = async (req, res, next) => {
                     pending: e.pending[0]?.count || 0,
                     approved: e.approved[0]?.count || 0,
                     rejected: e.rejected[0]?.count || 0,
-                },
-            },
+                }
+            }
         });
 
     } catch (error) {
-
         next(error);
     }
 };
@@ -842,34 +921,24 @@ exports.getGroupDetails = async (req, res, next) => {
         const { groupId } = req.params;
 
         if (!mongoose.Types.ObjectId.isValid(groupId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid group ID"
-            });
+            return res.status(400).json({ success: false, message: "Invalid group ID" });
         }
 
-        //fetch group
         const group = await Groups.findById(groupId)
             .populate("members.userId", "name phoneNumber")
             .select("-__v")
             .lean();
 
         if (!group) {
-            return res.status(404).json({
-                success: false,
-                message: "Group not found"
-            });
+            return res.status(404).json({ success: false, message: "Group not found" });
         }
 
         const { members, currentMonth } = group;
 
-        //Fetch all bidding rounds
-        //Needed to calculate expected contributions
         const biddingRounds = await BiddingRound.find({ groupId })
-            .select("monthNumber payablePerMember winnerUserId")
+            .select("monthNumber payablePerMember winnerReceivableAmount winnerUserId")
             .lean();
 
-        //match BOTH transaction types
         const transactionAgg = await Transaction.aggregate([
             {
                 $match: {
@@ -889,15 +958,9 @@ exports.getGroupDetails = async (req, res, next) => {
             {
                 $group: {
                     _id: "$userId",
-
-                    // Sum contributions only (winner pays no contribution)
                     totalPaid: {
-                        $sum: {
-                            $cond: [{ $eq: ["$type", "CONTRIBUTION"] }, "$amount", 0]
-                        }
+                        $sum: { $cond: [{ $eq: ["$type", "CONTRIBUTION"] }, "$amount", 0] }
                     },
-
-                    // Current-month contribution for the financial summary cards
                     currentMonthPaid: {
                         $sum: {
                             $cond: [
@@ -912,14 +975,11 @@ exports.getGroupDetails = async (req, res, next) => {
                             ]
                         }
                     },
-
-                    // Full payment history — contributions AND payouts in one array.
-                    // `type` field added so the frontend can label each row.
                     contributionHistory: {
                         $push: {
                             monthNumber: "$monthNumber",
                             amountPaid: "$amount",
-                            type: "$type",         // "CONTRIBUTION" | "WINNER_PAYOUT"
+                            type: "$type",
                             paymentMode: "$paymentMode",
                             collectedAt: "$handledAt",
                             collectorName: "$collector.name"
@@ -929,15 +989,18 @@ exports.getGroupDetails = async (req, res, next) => {
             }
         ]);
 
-        const transactionMap = new Map(
-            transactionAgg.map(item => [item._id.toString(), item])
-        );
+        const transactionMap = new Map(transactionAgg.map(item => [item._id.toString(), item]));
 
         let totalCollected = 0;
         let currentMonthCollection = 0;
 
-        const membersResponse = members.map(member => {
+        // NEW: Track group-level pending amounts for the current month
+        let groupPendingCollectionThisMonth = 0;
+        let groupPendingPayoutThisMonth = 0;
 
+        const currentRound = biddingRounds.find(r => r.monthNumber === currentMonth);
+
+        const membersResponse = members.map(member => {
             const userId = member.userId?._id?.toString();
             const txData = transactionMap.get(userId) || {};
 
@@ -955,6 +1018,26 @@ exports.getGroupDetails = async (req, res, next) => {
                 }
             });
 
+            // NEW: Calculate exactly what this member owes/receives THIS month
+            let currentMonthPendingContribution = 0;
+            let currentMonthPendingPayout = 0;
+
+            if (currentRound) {
+                if (currentRound.winnerUserId?.toString() === userId) {
+                    // Member is the winner this month
+                    const receivedThisMonth = history
+                        .filter(tx => tx.monthNumber === currentMonth && tx.type === "WINNER_PAYOUT")
+                        .reduce((sum, tx) => sum + tx.amountPaid, 0);
+
+                    currentMonthPendingPayout = Math.max(0, (currentRound.winnerReceivableAmount || 0) - receivedThisMonth);
+                    groupPendingPayoutThisMonth += currentMonthPendingPayout;
+                } else {
+                    // Member is a contributor this month
+                    currentMonthPendingContribution = Math.max(0, (currentRound.payablePerMember || 0) - currentMonthPaid);
+                    groupPendingCollectionThisMonth += currentMonthPendingContribution;
+                }
+            }
+
             return {
                 userId,
                 name: member.userId?.name || "Unknown User",
@@ -966,7 +1049,9 @@ exports.getGroupDetails = async (req, res, next) => {
                 expectedTillNow,
                 pendingAmount: Math.max(0, expectedTillNow - totalPaid),
                 currentMonthPaid,
-                contributionHistory: history   // now contains both types
+                currentMonthPendingContribution, // Sent to frontend
+                currentMonthPendingPayout,       // Sent to frontend
+                contributionHistory: history
             };
         });
 
@@ -987,7 +1072,9 @@ exports.getGroupDetails = async (req, res, next) => {
                 financialSummary: {
                     totalCollected,
                     currentMonthCollection,
-                    winnersCount
+                    winnersCount,
+                    groupPendingCollectionThisMonth, // Sent to frontend
+                    groupPendingPayoutThisMonth      // Sent to frontend
                 },
                 members: membersResponse
             }
@@ -1162,11 +1249,12 @@ exports.getMemberDetails = async (req, res, next) => {
 };
 
 
-//controller to open bidding
+// Controller to open bidding
 exports.openBidding = async (req, res, next) => {
     try {
-        const { groupId } = req.body;
+        const { groupId, minBid, maxBid, bidMultiple } = req.body;
 
+        //Input validation
         if (!groupId) {
             return res.status(400).json({
                 success: false,
@@ -1174,7 +1262,35 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        // Fetch group
+        if (minBid === undefined || maxBid === undefined || bidMultiple === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "minBid, maxBid and bidMultiple are required"
+            });
+        }
+
+        if (typeof minBid !== "number" || typeof maxBid !== "number" || typeof bidMultiple !== "number") {
+            return res.status(400).json({
+                success: false,
+                message: "minBid, maxBid and bidMultiple must be numbers"
+            });
+        }
+
+        if (minBid <= 0 || maxBid <= 0 || bidMultiple <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "minBid, maxBid and bidMultiple must be greater than zero"
+            });
+        }
+
+        if (minBid >= maxBid) {
+            return res.status(400).json({
+                success: false,
+                message: "minBid must be less than maxBid"
+            });
+        }
+
+        //Group validation
         const group = await Groups.findById(groupId);
 
         if (!group) {
@@ -1198,7 +1314,15 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        //ensure no OPEN round exists
+        // Block month 1 — admin round, no bidding
+        if (group.currentMonth === 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Month 1 is the admin round. Bidding starts from month 2"
+            });
+        }
+
+        // Ensure no round is already OPEN for this group
         const openRoundExists = await BiddingRound.findOne({
             groupId,
             status: "OPEN"
@@ -1211,53 +1335,74 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        // Check if this month round already exists
+        const now = new Date();
+        const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+        //Find existing PENDING round or create one
+        // Fallback: if no round exists yet, create one directly as OPEN.
         const existingRound = await BiddingRound.findOne({
             groupId,
             monthNumber: group.currentMonth
         });
 
+        let biddingRound;
+
         if (existingRound) {
-            return res.status(400).json({
-                success: false,
-                message: "Bidding already done for this month"
+            // Round exists but is not PENDING — cannot reopen
+            if (existingRound.status !== "PENDING") {
+                return res.status(400).json({
+                    success: false,
+                    message: `Bidding for this month is already in '${existingRound.status}' state and cannot be reopened`
+                });
+            }
+
+            // Update PENDING round with limits and open it
+            existingRound.status = "OPEN";
+            existingRound.minBid = minBid;
+            existingRound.maxBid = maxBid;
+            existingRound.bidMultiple = bidMultiple;
+            existingRound.startedAt = now;
+            existingRound.endedAt = twoHoursLater;
+            biddingRound = await existingRound.save();
+
+        } else {
+            // No round exists yet — create directly as OPEN
+            const totalPoolAmount = group.totalMembers * group.monthlyContribution;
+
+            biddingRound = await BiddingRound.create({
+                groupId,
+                monthNumber: group.currentMonth,
+                totalPoolAmount,
+                status: "OPEN",
+                minBid,
+                maxBid,
+                bidMultiple,
+                startedAt: now,
+                endedAt: twoHoursLater
             });
         }
 
-        const totalPoolAmount =
-            group.totalMembers * group.monthlyContribution;
-
-        const now = new Date();
-        const twoHoursLater = new Date(
-            now.getTime() + 2 * 60 * 60 * 1000
-        );
-
-        // Create bidding round
-        const biddingRound = await BiddingRound.create({
-            groupId,
-            monthNumber: group.currentMonth,
-            totalPoolAmount,
-            status: "OPEN",
-            startedAt: now,
-            endedAt: twoHoursLater
-        });
-
-        //Emit socket event
+        // Emit socket event to the bidding room
         const io = req.app.get("io");
-
         io.to(biddingRound._id.toString()).emit("biddingOpened", {
             biddingRoundId: biddingRound._id,
             monthNumber: biddingRound.monthNumber,
-            endsAt: biddingRound.endedAt
+            endsAt: biddingRound.endedAt,
+            minBid: biddingRound.minBid,
+            maxBid: biddingRound.maxBid,
+            bidMultiple: biddingRound.bidMultiple
         });
 
-        return res.status(201).json({
+        return res.status(200).json({
             success: true,
             message: "Bidding opened successfully",
             data: {
                 biddingRoundId: biddingRound._id,
                 monthNumber: biddingRound.monthNumber,
-                endsAt: biddingRound.endedAt
+                endsAt: biddingRound.endedAt,
+                minBid: biddingRound.minBid,
+                maxBid: biddingRound.maxBid,
+                bidMultiple: biddingRound.bidMultiple
             }
         });
 
@@ -1877,6 +2022,95 @@ exports.getBidsForRound = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             data: responseData
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get employee transaction history
+exports.getEmployeeTransactionHistory = async (req, res, next) => {
+    try {
+        const { employeeId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid employee ID"
+            });
+        }
+
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const skip = (page - 1) * limit;
+
+        // Verify employee exists
+        const employee = await Employee.findById(employeeId)
+            .select("name phoneNumber role approvalStatus")
+            .lean();
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found"
+            });
+        }
+
+        // Run count and fetch in parallel
+        const [transactions, total] = await Promise.all([
+            Transaction.find({ handledBy: employeeId })
+                .sort({ handledAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate("groupId", "name")
+                .populate("userId", "name phoneNumber")
+                .select("type amount handledAt status groupId userId monthNumber paymentMode remarks")
+                .lean(),
+
+            Transaction.countDocuments({ handledBy: employeeId })
+        ]);
+
+        // Reshape populated fields to clean response format
+        const formattedTransactions = transactions.map(tx => ({
+            _id: tx._id,
+            type: tx.type,
+            amount: tx.amount,
+            handledAt: tx.handledAt,
+            status: tx.status,
+            monthNumber: tx.monthNumber,
+            paymentMode: tx.paymentMode,
+            remarks: tx.remarks || null,
+            group: tx.groupId ? {
+                _id: tx.groupId._id,
+                name: tx.groupId.name
+            } : null,
+            member: tx.userId ? {
+                _id: tx.userId._id,
+                name: tx.userId.name,
+                phoneNumber: tx.userId.phoneNumber
+            } : null
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                employee: {
+                    _id: employee._id,
+                    name: employee.name,
+                    phoneNumber: employee.phoneNumber,
+                    role: employee.role
+                },
+                transactions: formattedTransactions,
+                pagination: {
+                    total,
+                    currentPage: page,
+                    totalPages: Math.ceil(total / limit),
+                    limit,
+                    hasNextPage: page * limit < total
+                }
+            }
         });
 
     } catch (error) {
