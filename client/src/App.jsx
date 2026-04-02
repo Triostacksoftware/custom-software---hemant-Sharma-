@@ -25,6 +25,11 @@ import GroupsMembers from './pages/member/Groups';
 import RaiseRequest from './pages/member/RaiseRequest';
 import Transactions from './pages/member/Transactions';
 import Bidding from './pages/member/Bidding';
+import Collections from './pages/admin/Collections';
+import Payouts from './pages/admin/Payouts';
+import Advertisement from './pages/admin/Advertisement';
+import BiddingHub from './pages/admin/Bidding';
+import BiddingRoom from './pages/admin/BiddingRoom';
 
 import './App.css';
 
@@ -87,6 +92,22 @@ function App() {
                             </AdminRoute>
                         } />
 
+                        <Route path="/admin/collections" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <Collections />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/payouts" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <Payouts />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
                         <Route path="/admin/group/:groupId" element={
                             <AdminRoute>
                                 <AdminLayout>
@@ -95,14 +116,6 @@ function App() {
                             </AdminRoute>
                         } />
 
-                        {/* <Route path="/admin/groups" element={
-                            <AdminRoute>
-                                <AdminLayout>
-                                    <div>Groups Page - Coming Soon</div>
-                                </AdminLayout>
-                            </AdminRoute>
-                        } /> */}
-
                         <Route path="/admin/create-group" element={
                             <AdminRoute>
                                 <AdminLayout>
@@ -110,6 +123,32 @@ function App() {
                                 </AdminLayout>
                             </AdminRoute>
                         } />
+
+                        <Route path="/admin/bidding" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <BiddingHub />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/bidding/room/:groupId" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <BiddingRoom />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/advertisement" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <Advertisement />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+
 
                         {/* Employee Routes (Placeholder) */}
                         <Route path="/employee/dashboard" element={

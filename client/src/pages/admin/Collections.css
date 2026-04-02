@@ -1,0 +1,282 @@
+/* Container matching Dashboard gradient */
+.admin-collections-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2f6 100%);
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+}
+
+/* === HEADER & MAIN CONTENT reused from Groups.css === */
+.collections-main-content {
+    padding: 0 2rem 4rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* === TOP STATS GRID === */
+.collections-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.c-stat-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.border-red {
+    border-bottom: 4px solid #ef4444;
+}
+
+.border-slate {
+    border-bottom: 4px solid #64748b;
+}
+
+.c-stat-icon {
+    height: 56px;
+    width: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.bg-red-light {
+    background: #fef2f2;
+}
+
+.bg-slate-light {
+    background: #f1f5f9;
+}
+
+.text-red {
+    color: #dc2626;
+}
+
+.text-slate {
+    color: #475569;
+}
+
+.text-green {
+    color: #059669;
+}
+
+.c-stat-info p {
+    margin: 0 0 0.25rem 0;
+    color: #64748b;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.c-stat-info h3 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+/* === CONTROL PANEL (Search & Filter) === */
+.collections-control-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+    background: white;
+    padding: 1rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.filter-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 0 1rem;
+    height: 48px;
+}
+
+.filter-icon {
+    color: #64748b;
+}
+
+.group-filter-select {
+    border: none;
+    background: transparent;
+    font-size: 1rem;
+    color: #1e293b;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+    width: 250px;
+}
+
+/* === COLLECTION CARD STYLES === */
+.collection-card {
+    align-items: stretch;
+    /* Stretch children to same height */
+}
+
+.col-card-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.25rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.col-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.col-phone {
+    margin: 0 0 0.5rem 0;
+    color: #64748b;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.col-group-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.col-badge {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+}
+
+.group-name-badge {
+    background: #e0e7ff;
+    color: #4338ca;
+    border: 1px solid #c7d2fe;
+}
+
+.month-badge {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+
+.col-card-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-shrink: 0;
+}
+
+.col-financials {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    background: #f8fafc;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    min-width: 160px;
+}
+
+.fin-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95rem;
+    color: #64748b;
+}
+
+.fin-detail strong {
+    font-size: 1rem;
+    color: #1e293b;
+}
+
+.pending-detail {
+    border-top: 1px solid #cbd5e1;
+    padding-top: 0.35rem;
+    margin-top: 0.15rem;
+}
+
+.pending-detail strong {
+    font-size: 1.15rem;
+}
+
+.remind-btn {
+    height: 100%;
+    border-radius: 12px;
+}
+
+/* === RESPONSIVE FOR MOBILE === */
+@media (max-width: 950px) {
+    .collections-control-panel {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-search-form {
+        max-width: 100%;
+    }
+
+    .filter-wrapper {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .group-filter-select {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .collections-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .collections-main-content {
+        padding: 0 1rem 3rem 1rem;
+    }
+
+    .collection-card {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1.25rem;
+    }
+
+    .col-card-right {
+        flex-direction: column;
+        align-items: stretch;
+        border-top: 1px solid #f1f5f9;
+        padding-top: 1.25rem;
+    }
+
+    .col-financials {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .remind-btn {
+        padding: 1rem;
+        justify-content: center;
+    }
+}

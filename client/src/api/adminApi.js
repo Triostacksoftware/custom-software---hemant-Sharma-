@@ -51,6 +51,26 @@ export const adminApi = {
         getBids: (roundId) => api.get(`/admin/bidding/round/${roundId}/bids`),
     },
 
+    // Collection Management
+    collections: {
+        getPending: (params = {}) => api.get('/admin/collections/pending', { params }),
+    },
+
+    // Payout Management (NEW)
+    payouts: {
+        getPending: (params = {}) => api.get('/admin/payouts/pending', { params }),
+    },
+
+    // Advertisement Management (NEW)
+    ads: {
+        create: (data) => api.post('/admin/ads', data),
+        fetchAll: () => api.get('/admin/ads'),
+        update: (adId, data) => api.patch(`/admin/ads/${adId}`, data),
+        activate: (adId) => api.patch(`/admin/ads/${adId}/activate`),
+        deactivate: (adId) => api.patch(`/admin/ads/${adId}/deactivate`),
+        delete: (adId) => api.delete(`/admin/ads/${adId}`)
+    },
+
     // Dashboard Stats (UPDATED ROUTE)
     getDashboardStats: () => api.get('/admin/dashboard/stats/'),
 

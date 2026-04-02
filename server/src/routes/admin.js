@@ -74,5 +74,20 @@ router.get('/admin/bidding/round/:roundId/bids', authentication.authenticate, au
 //endpoint to get transaction history logged by a specific employee
 router.get('/admin/employees/fetch/history/:employeeId', authentication.authenticate, authentication.isAdmin, adminController.getEmployeeTransactionHistory);
 
+//endpoint to fetch details of pending contributions
+router.get('/admin/collections/pending', authentication.authenticate, authentication.isAdmin, adminController.getPendingCollections);
+
+//endpoint to fetch the details of pending payouts
+router.get('/admin/payouts/pending', authentication.authenticate, authentication.isAdmin, adminController.getPendingPayouts);
+
+
+// ── Ads ───────────────────────────────────────────────────────────────────────
+router.post('/admin/ads', authentication.authenticate, authentication.isAdmin, adminController.createAd);
+router.get('/admin/ads', authentication.authenticate, authentication.isAdmin, adminController.getAllAds);
+router.patch('/admin/ads/:adId', authentication.authenticate, authentication.isAdmin, adminController.updateAd);
+router.patch('/admin/ads/:adId/activate', authentication.authenticate, authentication.isAdmin, adminController.activateAd);
+router.patch('/admin/ads/:adId/deactivate', authentication.authenticate, authentication.isAdmin, adminController.deactivateAd);
+router.delete('/admin/ads/:adId', authentication.authenticate, authentication.isAdmin, adminController.deleteAd);
+
 
 module.exports = router;

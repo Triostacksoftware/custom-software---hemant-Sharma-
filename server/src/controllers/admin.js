@@ -9,6 +9,8 @@ const User = require("../models/user.js");
 const Transaction = require("../models/transaction.js");
 const BiddingRound = require("../models/biddingRound.js");
 const Bid = require("../models/bid.js");
+const Ad = require("../models/ads.js");
+const Notification = require("../models/notification.js");
 
 
 
@@ -2111,6 +2113,608 @@ exports.getEmployeeTransactionHistory = async (req, res, next) => {
                     hasNextPage: page * limit < total
                 }
             }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to show every member who has not fully paid
+// their contribution for the current month across all active groups.
+exports.getPendingCollections = async (req, res, next) => {
+    try {
+        const { search, groupId } = req.query;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
+        //Fetch active groups
+        const groupFilter = { status: "ACTIVE" };
+        if (groupId && mongoose.Types.ObjectId.isValid(groupId)) {
+            groupFilter._id = new mongoose.Types.ObjectId(groupId);
+        }
+
+        const groups = await Groups.find(groupFilter)
+            .select("_id name currentMonth members")
+            .lean();
+
+        if (!groups.length) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    summary: { totalPendingAmount: 0, totalPendingMembers: 0 },
+                    collections: [],
+                    pagination: { total: 0, page, limit, totalPages: 0, hasNextPage: false }
+                }
+            });
+        }
+
+        const groupIds = groups.map(g => g._id);
+        const groupMap = new Map(groups.map(g => [g._id.toString(), g]));
+
+        //Fetch current payment-phase rounds
+        const rounds = await BiddingRound.find({
+            groupId: { $in: groupIds },
+            status: { $in: ["PAYMENT_OPEN", "ADMIN_ROUND"] }
+        })
+            .select("_id groupId monthNumber status payablePerMember winnerUserId")
+            .lean();
+
+        // Only keep rounds that match the group's current month
+        const activeRounds = rounds.filter(r => {
+            const group = groupMap.get(r.groupId.toString());
+            return group && r.monthNumber === group.currentMonth;
+        });
+
+        if (!activeRounds.length) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    summary: { totalPendingAmount: 0, totalPendingMembers: 0 },
+                    collections: [],
+                    pagination: { total: 0, page, limit, totalPages: 0, hasNextPage: false }
+                }
+            });
+        }
+
+        //Aggregate COMPLETED contributions per member per round
+        const roundIds = activeRounds.map(r => r._id);
+
+        const txAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    biddingRoundId: { $in: roundIds.map(id => new mongoose.Types.ObjectId(id)) },
+                    type: "CONTRIBUTION",
+                    status: "COMPLETED"
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        biddingRoundId: "$biddingRoundId",
+                        userId: "$userId"
+                    },
+                    alreadyPaid: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        // Build lookup: "roundId_userId" -> alreadyPaid
+        const paidMap = new Map();
+        txAgg.forEach(item => {
+            const key = `${item._id.biddingRoundId}_${item._id.userId}`;
+            paidMap.set(key, item.alreadyPaid);
+        });
+
+        //Collect all member IDs we need to resolve
+        // Build pending records and gather unique userIds for name/phone lookup
+        const pendingRecordsRaw = [];
+        const userIdsNeeded = new Set();
+
+        activeRounds.forEach(round => {
+            const group = groupMap.get(round.groupId.toString());
+            if (!group) return;
+
+            const winnerIdStr = round.winnerUserId?.toString();
+
+            group.members.forEach(member => {
+                const memberIdStr = member.userId.toString();
+
+                // Winner does not owe a contribution
+                if (memberIdStr === winnerIdStr) return;
+
+                const alreadyPaid = paidMap.get(`${round._id}_${memberIdStr}`) || 0;
+                const pendingAmount = Math.max(0, (round.payablePerMember || 0) - alreadyPaid);
+
+                // Only include members who still owe something
+                if (pendingAmount <= 0) return;
+
+                pendingRecordsRaw.push({
+                    userId: member.userId,
+                    groupId: group._id,
+                    groupName: group.name,
+                    currentMonth: round.monthNumber,
+                    payableAmount: round.payablePerMember,
+                    alreadyPaid,
+                    pendingAmount
+                });
+
+                userIdsNeeded.add(memberIdStr);
+            });
+        });
+
+        //Fetch member name and phone in one query
+        const users = await User.find({
+            _id: { $in: [...userIdsNeeded] }
+        })
+            .select("_id name phoneNumber")
+            .lean();
+
+        const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
+        //Build full records with member details + apply search
+        let collections = pendingRecordsRaw.map(record => {
+            const user = userMap.get(record.userId.toString());
+            return {
+                memberId: record.userId,
+                memberName: user?.name || "Unknown",
+                memberPhone: user?.phoneNumber || null,
+                groupId: record.groupId,
+                groupName: record.groupName,
+                currentMonth: record.currentMonth,
+                payableAmount: record.payableAmount,  // what they owe this month total
+                alreadyPaid: record.alreadyPaid,    // what they have paid so far
+                pendingAmount: record.pendingAmount    // what is still outstanding
+            };
+        });
+
+        // Apply search filter — member name or phone (case-insensitive)
+        if (search && search.trim()) {
+            const term = search.trim().toLowerCase();
+            collections = collections.filter(c =>
+                c.memberName.toLowerCase().includes(term) ||
+                (c.memberPhone && c.memberPhone.includes(term))
+            );
+        }
+
+        // Sort by pendingAmount descending — highest pending first
+        collections.sort((a, b) => b.pendingAmount - a.pendingAmount);
+
+        //Summary (before pagination)
+        const totalPendingAmount = collections.reduce((sum, c) => sum + c.pendingAmount, 0);
+        const totalPendingMembers = collections.length;
+
+        //Paginate
+        const total = collections.length;
+        const totalPages = Math.ceil(total / limit);
+        const paginated = collections.slice((page - 1) * limit, page * limit);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                summary: {
+                    totalPendingAmount,   // total outstanding amount across all pending members
+                    totalPendingMembers   // total number of member-group pairs with pending dues
+                },
+                collections: paginated,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages,
+                    hasNextPage: page * limit < total
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get the list of pending for payout members for admin panel
+exports.getPendingPayouts = async (req, res, next) => {
+    try {
+        const { search, groupId } = req.query;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
+        // ── Step 1: Fetch active groups ───────────────────────────────────────
+        const groupFilter = { status: "ACTIVE" };
+        if (groupId && mongoose.Types.ObjectId.isValid(groupId)) {
+            groupFilter._id = new mongoose.Types.ObjectId(groupId);
+        }
+
+        const groups = await Groups.find(groupFilter)
+            .select("_id name currentMonth")
+            .lean();
+
+        if (!groups.length) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    summary: { totalPendingPayoutAmount: 0, totalPendingWinners: 0 },
+                    payouts: [],
+                    pagination: { total: 0, page, limit, totalPages: 0, hasNextPage: false }
+                }
+            });
+        }
+
+        const groupIds = groups.map(g => g._id);
+        const groupMap = new Map(groups.map(g => [g._id.toString(), g]));
+
+        // ── Step 2: Fetch PAYMENT_OPEN rounds for current month ───────────────
+        //
+        // ADMIN_ROUND is intentionally excluded — admin is in the Employee
+        // model, not User model, so there is no WINNER_PAYOUT transaction
+        // to track here. Admin payouts are handled separately.
+        const rounds = await BiddingRound.find({
+            groupId: { $in: groupIds },
+            status: "PAYMENT_OPEN",
+            winnerUserId: { $ne: null }   // must have a declared winner
+        })
+            .select("_id groupId monthNumber winnerUserId winnerReceivableAmount winningBidAmount dividendPerMember")
+            .lean();
+
+        // Only keep rounds matching the group's current month
+        const activePayoutRounds = rounds.filter(r => {
+            const group = groupMap.get(r.groupId.toString());
+            return group && r.monthNumber === group.currentMonth;
+        });
+
+        if (!activePayoutRounds.length) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    summary: { totalPendingPayoutAmount: 0, totalPendingWinners: 0 },
+                    payouts: [],
+                    pagination: { total: 0, page, limit, totalPages: 0, hasNextPage: false }
+                }
+            });
+        }
+
+        // ── Step 3: Aggregate COMPLETED WINNER_PAYOUT transactions ───────────
+        const roundIds = activePayoutRounds.map(r => r._id);
+
+        const txAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    biddingRoundId: { $in: roundIds.map(id => new mongoose.Types.ObjectId(id)) },
+                    type: "WINNER_PAYOUT",
+                    status: "COMPLETED"
+                }
+            },
+            {
+                $group: {
+                    _id: "$biddingRoundId",
+                    alreadyReceived: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        // Build lookup: roundId -> alreadyReceived
+        const receivedMap = new Map(
+            txAgg.map(item => [item._id.toString(), item.alreadyReceived])
+        );
+
+        // ── Step 4: Build pending records + collect winner userIds ────────────
+        const pendingRecordsRaw = [];
+        const winnerIdsNeeded = new Set();
+
+        activePayoutRounds.forEach(round => {
+            const group = groupMap.get(round.groupId.toString());
+            if (!group) return;
+
+            const alreadyReceived = receivedMap.get(round._id.toString()) || 0;
+            const pendingAmount = Math.max(0, (round.winnerReceivableAmount || 0) - alreadyReceived);
+
+            // Only include if payout is still pending
+            if (pendingAmount <= 0) return;
+
+            pendingRecordsRaw.push({
+                winnerUserId: round.winnerUserId,
+                groupId: group._id,
+                groupName: group.name,
+                currentMonth: round.monthNumber,
+                winnerReceivableAmount: round.winnerReceivableAmount, // total payout owed
+                winningBidAmount: round.winningBidAmount,       // bid that won
+                dividendPerMember: round.dividendPerMember,      // dividend each member got
+                alreadyReceived,
+                pendingAmount
+            });
+
+            winnerIdsNeeded.add(round.winnerUserId.toString());
+        });
+
+        // ── Step 5: Fetch winner details in one query ─────────────────────────
+        const winners = await User.find({
+            _id: { $in: [...winnerIdsNeeded] }
+        })
+            .select("_id name phoneNumber")
+            .lean();
+
+        const winnerMap = new Map(winners.map(u => [u._id.toString(), u]));
+
+        // ── Step 6: Build full records + apply search filter ──────────────────
+        let payouts = pendingRecordsRaw.map(record => {
+            const winner = winnerMap.get(record.winnerUserId.toString());
+            return {
+                winnerId: record.winnerUserId,
+                winnerName: winner?.name || "Unknown",
+                winnerPhone: winner?.phoneNumber || null,
+                groupId: record.groupId,
+                groupName: record.groupName,
+                currentMonth: record.currentMonth,
+                winnerReceivableAmount: record.winnerReceivableAmount, // total entitled payout
+                winningBidAmount: record.winningBidAmount,       // winning bid placed
+                dividendPerMember: record.dividendPerMember,      // dividend per non-winner
+                alreadyReceived: record.alreadyReceived,        // paid so far
+                pendingAmount: record.pendingAmount           // still to be paid out
+            };
+        });
+
+        // Apply search filter
+        if (search && search.trim()) {
+            const term = search.trim().toLowerCase();
+            payouts = payouts.filter(p =>
+                p.winnerName.toLowerCase().includes(term) ||
+                (p.winnerPhone && p.winnerPhone.includes(term))
+            );
+        }
+
+        // Sort by pendingAmount descending — largest outstanding payout first
+        payouts.sort((a, b) => b.pendingAmount - a.pendingAmount);
+
+        // ── Step 7: Summary (before pagination) ───────────────────────────────
+        const totalPendingPayoutAmount = payouts.reduce((sum, p) => sum + p.pendingAmount, 0);
+        const totalPendingWinners = payouts.length;
+
+        // ── Step 8: Paginate ──────────────────────────────────────────────────
+        const total = payouts.length;
+        const totalPages = Math.ceil(total / limit);
+        const paginated = payouts.slice((page - 1) * limit, page * limit);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                summary: {
+                    totalPendingPayoutAmount,  // total amount still to be paid out this month
+                    totalPendingWinners        // number of winners still awaiting full payout
+                },
+                payouts: paginated,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages,
+                    hasNextPage: page * limit < total
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to create a new ad. Only one ad can be active at a time.
+exports.createAd = async (req, res, next) => {
+    try {
+        const { adText, adLink, isActive = true } = req.body;
+
+        if (!adText || !adText.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "adText is required"
+            });
+        }
+
+        if (!adLink || !adLink.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "adLink is required"
+            });
+        }
+
+        // If this new ad is active, deactivate all existing ads first
+        if (isActive) {
+            await Ad.updateMany({}, { $set: { isActive: false } });
+        }
+
+        const ad = await Ad.create({
+            adText: adText.trim(),
+            adLink: adLink.trim(),
+            isActive: !!isActive
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Ad created successfully",
+            data: { ad }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to get all ads sorted by newest first.
+exports.getAllAds = async (req, res, next) => {
+    try {
+        const ads = await Ad.find()
+            .sort({ updatedAt: -1 })
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            data: { ads }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to update an existing ad's text and/or link.
+exports.updateAd = async (req, res, next) => {
+    try {
+        const { adId } = req.params;
+        const { adText, adLink } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(adId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid ad ID"
+            });
+        }
+
+        if (!adText && !adLink) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one of adText or adLink is required"
+            });
+        }
+
+        const updateFields = {};
+        if (adText && adText.trim()) updateFields.adText = adText.trim();
+        if (adLink && adLink.trim()) updateFields.adLink = adLink.trim();
+
+        const ad = await Ad.findByIdAndUpdate(
+            adId,
+            { $set: updateFields },
+            { new: true, runValidators: true }
+        ).lean();
+
+        if (!ad) {
+            return res.status(404).json({
+                success: false,
+                message: "Ad not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Ad updated successfully",
+            data: { ad }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to Set a specific ad as the active one.
+exports.activateAd = async (req, res, next) => {
+    try {
+        const { adId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(adId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid ad ID"
+            });
+        }
+
+        const ad = await Ad.findById(adId);
+
+        if (!ad) {
+            return res.status(404).json({
+                success: false,
+                message: "Ad not found"
+            });
+        }
+
+        if (ad.isActive) {
+            return res.status(400).json({
+                success: false,
+                message: "This ad is already active"
+            });
+        }
+
+        // Deactivate all, then activate the selected one
+        await Ad.updateMany({}, { $set: { isActive: false } });
+        ad.isActive = true;
+        await ad.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Ad activated successfully",
+            data: { ad }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to deactivate an ad. The member dashboard marquee will be hidden
+exports.deactivateAd = async (req, res, next) => {
+    try {
+        const { adId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(adId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid ad ID"
+            });
+        }
+
+        const ad = await Ad.findByIdAndUpdate(
+            adId,
+            { $set: { isActive: false } },
+            { new: true }
+        ).lean();
+
+        if (!ad) {
+            return res.status(404).json({
+                success: false,
+                message: "Ad not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Ad deactivated successfully",
+            data: { ad }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+//controller to permanently delete an ad.
+exports.deleteAd = async (req, res, next) => {
+    try {
+        const { adId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(adId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid ad ID"
+            });
+        }
+
+        const ad = await Ad.findByIdAndDelete(adId).lean();
+
+        if (!ad) {
+            return res.status(404).json({
+                success: false,
+                message: "Ad not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Ad deleted successfully"
         });
 
     } catch (error) {
