@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut, IndianRupee, Users, FileText, History, Gavel, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell, LogOut, IndianRupee, Users, FileText, History, Gavel, ChevronLeft, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { userApi } from '../../api/userApi';
 import logo from '../../assets/images/logo.png';
@@ -16,6 +16,10 @@ const MemberDashboard = () => {
     const [stats, setStats] = useState({ pendingAmount: 0, receivableAmount: 0 });
     const [notifications, setNotifications] = useState(0);
     const [adData, setAdData] = useState({ text: null, link: null });
+
+    // Pending Transactions State (NEW)
+    const [pendingConfirmations, setPendingConfirmations] = useState([]);
+    const [confirmingTxId, setConfirmingTxId] = useState(null);
 
     // Notification Modal States
     const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -37,10 +41,12 @@ const MemberDashboard = () => {
         const fetchDashboardData = async () => {
             setLoading(true);
             try {
-                const [statsRes, notifRes, adRes] = await Promise.allSettled([
+                // ADDED: getTransactionHistory with status=PENDING
+                const [statsRes, notifRes, adRes, pendingTxRes] = await Promise.allSettled([
                     userApi.getDashboardStats(),
                     userApi.getUnreadNotifications(),
-                    userApi.getActiveAd()
+                    userApi.getActiveAd(),
+                    userApi.getTransactionHistory({ status: 'PENDING', limit: 10 })
                 ]);
 
                 if (statsRes.status === 'fulfilled' && statsRes.value.data.success) {
@@ -54,6 +60,9 @@ const MemberDashboard = () => {
                         text: adRes.value.data.data.adText,
                         link: adRes.value.data.data.adLink
                     });
+                }
+                if (pendingTxRes.status === 'fulfilled' && pendingTxRes.value.data.success) {
+                    setPendingConfirmations(pendingTxRes.value.data.data.transactions || []);
                 }
             } catch (error) {
                 console.error("Dashboard data fetch error:", error);
@@ -77,6 +86,27 @@ const MemberDashboard = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // --- Action Handlers ---
+
+    // NEW: Handle Transaction Confirmation
+    const handleConfirmTransaction = async (txId) => {
+        setConfirmingTxId(txId);
+        try {
+            const response = await userApi.confirmTransaction({ transactionId: txId });
+            if (response.data.success) {
+                // Remove the confirmed transaction from the UI immediately
+                setPendingConfirmations(prev => prev.filter(tx => tx._id !== txId));
+                alert("Transaction confirmed successfully!");
+                // Optionally: re-fetch stats to update dashboard numbers
+            }
+        } catch (error) {
+            console.error(error);
+            alert(error.response?.data?.message || "Failed to confirm transaction.");
+        } finally {
+            setConfirmingTxId(null);
+        }
+    };
+
     const handleNotificationClick = async () => {
         const newOpenState = !isNotifOpen;
         setIsNotifOpen(newOpenState);
@@ -90,8 +120,6 @@ const MemberDashboard = () => {
                 if (response.data.success) {
                     const fetchedNotifs = response.data.data.notifications;
                     setNotifList(fetchedNotifs);
-
-                    // Backend marks these as read, so decrement our local unread badge count
                     setNotifications(prev => Math.max(0, prev - fetchedNotifs.length));
                 }
             } catch (error) {
@@ -106,7 +134,6 @@ const MemberDashboard = () => {
         setLoadingNotifs(true);
         setViewAllMode(true);
         try {
-            // Fetch all notifications (unreadOnly = false), 10 per page
             const response = await userApi.getNotificationsList(false, 10, page);
             if (response.data.success) {
                 setNotifList(response.data.data.notifications);
@@ -192,7 +219,6 @@ const MemberDashboard = () => {
                                                     <div className="notif-icon"><Bell size={16} /></div>
                                                     <div className="notif-content">
                                                         <p className="notif-title">{notif.title}</p>
-                                                        {/* Switched to notif.body based on your backend select fields */}
                                                         <p className="notif-desc">{notif.body}</p>
                                                         <span className="notif-time">
                                                             {new Date(notif.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -204,7 +230,6 @@ const MemberDashboard = () => {
                                     )}
                                 </div>
 
-                                {/* Dynamic Footer */}
                                 {!viewAllMode ? (
                                     <div className="notif-footer" onClick={() => fetchAllNotifications(1)}>
                                         View all notifications
@@ -242,6 +267,42 @@ const MemberDashboard = () => {
             </header>
 
             <main className="dashboard-main">
+
+                {/* === NEW: PENDING CONFIRMATIONS SECTION === */}
+                {pendingConfirmations.length > 0 && (
+                    <div className="pending-actions-container">
+                        <div className="pending-header">
+                            <AlertCircle size={24} className="text-amber" />
+                            <h2>Action Required: Pending Confirmations</h2>
+                        </div>
+
+                        <div className="pending-cards-wrapper">
+                            {pendingConfirmations.map(tx => (
+                                <div key={tx._id} className="pending-action-card">
+                                    <div className="pending-action-info">
+                                        <h4>Verify {tx.type === 'CONTRIBUTION' ? 'Collection' : 'Payout'}</h4>
+                                        <p>
+                                            Employee <strong>{tx.handledBy?.name || 'Agent'}</strong> is requesting confirmation for a
+                                            transaction of <strong className={tx.type === 'CONTRIBUTION' ? 'text-blue' : 'text-emerald'}>{formatCurrency(tx.amount)}</strong> for
+                                            group <strong>{tx.group?.name || 'Unknown'}</strong> (Month {tx.monthNumber}).
+                                        </p>
+                                    </div>
+                                    <div className="pending-action-btns">
+                                        <button
+                                            className="btn-confirm-tx"
+                                            onClick={() => handleConfirmTransaction(tx._id)}
+                                            disabled={confirmingTxId === tx._id}
+                                        >
+                                            <CheckCircle size={18} /> {confirmingTxId === tx._id ? 'Confirming...' : 'Confirm'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {/* ========================================= */}
+
                 <div className="cross-layout-grid">
                     <div className="layout-card card-amount" onClick={() => navigate('/user/transactions')}>
                         <div className="icon-wrapper"><IndianRupee size={40} /></div>

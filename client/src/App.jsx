@@ -1,37 +1,51 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+
+// === Context & Protections ===
 import { AuthProvider } from './context/AuthContext';
-import { AdminRoute } from './routes';
-import { EmployeeRoute } from './routes';
-import LandingPage from './pages/public/LandingPage';
+import { AdminRoute, EmployeeRoute } from './routes';
+import MemberRoute from './routes/MemberRoute';
+
+// === Layout Components ===
 import AdminLayout from './components/layout/AdminLayout';
+import EmployeeLayout from './components/layout/EmployeeLayout';
+import MemberLayout from './components/layout/MemberLayout';
+
+// === Public Pages ===
+import LandingPage from './pages/public/LandingPage';
+
+// === Admin Pages ===
 import Dashboard from './pages/admin/Dashboard';
 import Members from './pages/admin/Members';
+import MemberDetails from './pages/admin/MemberDetails';
 import Groups from './pages/admin/Groups';
-import Employees from './pages/admin/Employees';
-import Approvals from './pages/admin/Approvals';
 import CreateGroup from './pages/admin/CreateGroup';
 import GroupDetails from './pages/admin/GroupDetails';
-import MemberDetails from './pages/admin/MemberDetails';
-import EmployeeDashboard from './pages/employee/Dashboard';
-import EmployeeLayout from './components/layout/EmployeeLayout';
-import LogContribution from './pages/employee/LogContribution';
-import MemberRoute from './routes/MemberRoute';
-import MemberLayout from './components/layout/MemberLayout';
-import MemberDashboard from './pages/member/Dashboard';
-import TransactionHistory from './pages/employee/TransactionHistory';
-import MemberGroupDetails from './pages/member/GroupDetails';
-import GroupsMembers from './pages/member/Groups';
-import RaiseRequest from './pages/member/RaiseRequest';
-import Transactions from './pages/member/Transactions';
-import Bidding from './pages/member/Bidding';
+import Employees from './pages/admin/Employees';
+import Approvals from './pages/admin/Approvals';
 import Collections from './pages/admin/Collections';
 import Payouts from './pages/admin/Payouts';
 import Advertisement from './pages/admin/Advertisement';
 import BiddingHub from './pages/admin/Bidding';
 import BiddingRoom from './pages/admin/BiddingRoom';
 
+// === Employee Pages ===
+import EmployeeDashboard from './pages/employee/Dashboard';
+import LogContribution from './pages/employee/LogContribution';
+import TransactionHistory from './pages/employee/TransactionHistory';
+
+// === Member Pages ===
+import MemberDashboard from './pages/member/Dashboard';
+import GroupsMembers from './pages/member/Groups';
+import MemberGroupDetails from './pages/member/GroupDetails';
+import RaiseRequest from './pages/member/RaiseRequest';
+import Transactions from './pages/member/Transactions';
+import Bidding from './pages/member/Bidding';
+import MemberBiddingRoom from './pages/member/BiddingRoom'; //
+
+// === Global Styles ===
 import './App.css';
+
 
 function App() {
     return (
@@ -39,10 +53,16 @@ function App() {
             <Router>
                 <div className="App">
                     <Routes>
-                        {/* Public Routes */}
+
+                        {/* ==========================================
+                            PUBLIC ROUTES
+                        ========================================== */}
                         <Route path="/" element={<LandingPage />} />
 
-                        {/* Admin Routes */}
+
+                        {/* ==========================================
+                            ADMIN ROUTES
+                        ========================================== */}
                         <Route path="/admin/dashboard" element={
                             <AdminRoute>
                                 <AdminLayout>
@@ -51,7 +71,6 @@ function App() {
                             </AdminRoute>
                         } />
 
-                        {/* Placeholder for other admin routes */}
                         <Route path="/admin/approvals" element={
                             <AdminRoute>
                                 <AdminLayout>
@@ -92,22 +111,6 @@ function App() {
                             </AdminRoute>
                         } />
 
-                        <Route path="/admin/collections" element={
-                            <AdminRoute>
-                                <AdminLayout>
-                                    <Collections />
-                                </AdminLayout>
-                            </AdminRoute>
-                        } />
-
-                        <Route path="/admin/payouts" element={
-                            <AdminRoute>
-                                <AdminLayout>
-                                    <Payouts />
-                                </AdminLayout>
-                            </AdminRoute>
-                        } />
-
                         <Route path="/admin/group/:groupId" element={
                             <AdminRoute>
                                 <AdminLayout>
@@ -120,6 +123,22 @@ function App() {
                             <AdminRoute>
                                 <AdminLayout>
                                     <CreateGroup />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/collections" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <Collections />
+                                </AdminLayout>
+                            </AdminRoute>
+                        } />
+
+                        <Route path="/admin/payouts" element={
+                            <AdminRoute>
+                                <AdminLayout>
+                                    <Payouts />
                                 </AdminLayout>
                             </AdminRoute>
                         } />
@@ -149,8 +168,9 @@ function App() {
                         } />
 
 
-
-                        {/* Employee Routes (Placeholder) */}
+                        {/* ==========================================
+                            EMPLOYEE ROUTES
+                        ========================================== */}
                         <Route path="/employee/dashboard" element={
                             <EmployeeRoute allowedRoles={['employee']}>
                                 <EmployeeLayout>
@@ -166,6 +186,7 @@ function App() {
                                 </EmployeeLayout>
                             </EmployeeRoute>
                         } />
+
                         <Route path="/employee/history" element={
                             <EmployeeRoute>
                                 <EmployeeLayout>
@@ -174,7 +195,10 @@ function App() {
                             </EmployeeRoute>
                         } />
 
-                        {/* User Routes (Placeholder) */}
+
+                        {/* ==========================================
+                            MEMBER / USER ROUTES
+                        ========================================== */}
                         <Route path="/user/dashboard" element={
                             <MemberRoute>
                                 <MemberLayout>
@@ -182,6 +206,7 @@ function App() {
                                 </MemberLayout>
                             </MemberRoute>
                         } />
+
                         <Route path="/user/groups" element={
                             <MemberRoute>
                                 <MemberLayout>
@@ -189,27 +214,7 @@ function App() {
                                 </MemberLayout>
                             </MemberRoute>
                         } />
-                        <Route path="/user/raise-request" element={
-                            <MemberRoute>
-                                <MemberLayout>
-                                    <RaiseRequest />
-                                </MemberLayout>
-                            </MemberRoute>
-                        } />
-                        <Route path="/user/transactions" element={
-                            <MemberRoute>
-                                <MemberLayout>
-                                    <Transactions />
-                                </MemberLayout>
-                            </MemberRoute>
-                        } />
-                        <Route path="/user/bidding" element={
-                            <MemberRoute>
-                                <MemberLayout>
-                                    <Bidding />
-                                </MemberLayout>
-                            </MemberRoute>
-                        } />
+
                         <Route path="/user/group/:groupId" element={
                             <MemberRoute>
                                 <MemberLayout>
@@ -218,7 +223,45 @@ function App() {
                             </MemberRoute>
                         } />
 
+                        <Route path="/user/raise-request" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <RaiseRequest />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+
+                        <Route path="/user/transactions" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <Transactions />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+
+                        <Route path="/user/bidding" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <Bidding />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+
+                        {/* NEW ROUTE ADDED: Member Bidding Room */}
+                        <Route path="/user/bidding/room/:roundId" element={
+                            <MemberRoute>
+                                <MemberLayout>
+                                    <MemberBiddingRoom />
+                                </MemberLayout>
+                            </MemberRoute>
+                        } />
+
+
+                        {/* ==========================================
+                            FALLBACK ROUTE
+                        ========================================== */}
                         <Route path="*" element={<Navigate to="/" replace />} />
+
                     </Routes>
                 </div>
             </Router>

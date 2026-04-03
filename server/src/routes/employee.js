@@ -11,7 +11,7 @@ router.post('/employee/signup/', employeeController.employeeSignup);
 router.post('/employee/login/', employeeController.employeeLogin);
 
 //endpoint to log monthly contribution
-router.post('/employee/group/contribution/log_contribution/', authentication.authenticate, employeeController.logTransaction);
+router.post('/employee/log_transaction/', authentication.authenticate, employeeController.logTransaction);
 
 //endpoint to fetch employee dashboard
 router.get('/employee/dashboard/', authentication.authenticate, employeeController.getEmployeeDashboard);
@@ -20,7 +20,7 @@ router.get('/employee/dashboard/', authentication.authenticate, employeeControll
 router.get('/employee/groups/active', authentication.authenticate, employeeController.getActiveGroups);
 
 //endpoint to fetch members whose contribution is pending
-router.get('/employee/groups/:groupId/pending_members/', authentication.authenticate, employeeController.getTransactionPendingMembers);
+router.get('/employee/pending_members/', authentication.authenticate, employeeController.getTransactionPendingMembers);
 
 //endpoint to fetch transaction history
 router.get('/employee/transactions/history/', authentication.authenticate, employeeController.getEmployeeTransactionHistory);

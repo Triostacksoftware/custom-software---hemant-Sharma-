@@ -23,14 +23,24 @@ const Transactions = () => {
     const fetchTransactions = async (pageToFetch, typeFilter) => {
         try {
             setLoading(true);
-            const response = await userApi.getTransactionHistory(pageToFetch, 10, typeFilter);
+
+            // FIX: Package arguments into a proper object for the updated API
+            const params = {
+                page: pageToFetch,
+                limit: 10
+            };
+            if (typeFilter) {
+                params.type = typeFilter;
+            }
+
+            const response = await userApi.getTransactionHistory(params);
 
             if (response.data.success) {
                 setTransactions(response.data.data.transactions);
                 setPagination(response.data.data.pagination);
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.message || 'Failed to load passbook');
+            setError(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to load passbook');
         } finally {
             setLoading(false);
         }

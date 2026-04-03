@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Gavel, PlayCircle, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle } from 'lucide-react';
+import { io } from 'socket.io-client';
 import { adminApi } from '../../api/adminApi';
 import './Bidding.css';
 
@@ -13,6 +14,7 @@ const BiddingRoom = () => {
     const [groupData, setGroupData] = useState(null);
     const [roundData, setRoundData] = useState(null);
     const [bids, setBids] = useState([]);
+    const [socket, setSocket] = useState(null); //State for socket connection
 
     // Open Bidding Form State
     const [openForm, setOpenForm] = useState({ minBid: '', maxBid: '', bidMultiple: '' });
@@ -49,19 +51,47 @@ const BiddingRoom = () => {
         }
     };
 
+    // Initial Data Fetch
     useEffect(() => {
         fetchData();
-
-        // Polling for live bids if round is OPEN
-        let interval;
-        if (roundData?.status === 'OPEN') {
-            interval = setInterval(() => {
-                fetchData(); // Silently refresh data every 5 seconds
-            }, 5000);
-        }
-        return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groupId, roundData?.status]);
+    }, [groupId]);
+
+    // === SOCKET CONNECTION FOR LIVE BIDS ===
+    useEffect(() => {
+        // Only connect if the round exists and we have its ID
+        if (!roundData || !roundData._id) return;
+
+        const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const newSocket = io(socketUrl);
+
+        // Join the exact same room the members are in
+        newSocket.emit('joinBiddingRoom', { biddingRoundId: roundData._id });
+
+        // Listen for new bids
+        newSocket.on('newBidPlaced', () => {
+            // Silently re-fetch bids so we get the populated user names from the DB
+            adminApi.bidding.getBids(roundData._id)
+                .then(res => {
+                    if (res.data.success) {
+                        setBids(res.data.data.sort((a, b) => b.bidAmount - a.bidAmount));
+                    }
+                })
+                .catch(err => console.error("Live fetch error:", err));
+        });
+
+        // Listen for closing events
+        newSocket.on('biddingClosed', () => {
+            fetchData(); // Refresh to update status to CLOSED
+            alert("Bidding time has expired. The room is now closed.");
+        });
+
+        setSocket(newSocket);
+
+        return () => {
+            if (newSocket) newSocket.disconnect();
+        };
+    }, [roundData?._id]); // Run this effect when the round ID is available
 
     // Calculate Defaults for Form when groupData loads
     useEffect(() => {
@@ -135,7 +165,6 @@ const BiddingRoom = () => {
             alert("Month finalized successfully!");
             navigate('/admin/bidding');
         } catch (err) {
-            // This is where your backend blocks if members haven't paid
             alert(err.response?.data?.message || "Cannot finalize. Make sure all members have completed their payments.");
         } finally {
             setActionLoading(false);
@@ -240,7 +269,6 @@ const BiddingRoom = () => {
                             <div className="action-box admin-box">
                                 <h4>Admin Round (Month 1)</h4>
                                 <p>No bidding occurs in the first month. The full pool is allocated to the platform/admin.</p>
-                                {/* Admin round logic usually handled separately in your system */}
                             </div>
                         )}
 

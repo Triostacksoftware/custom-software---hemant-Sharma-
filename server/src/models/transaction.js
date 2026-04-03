@@ -73,8 +73,8 @@ const transactionSchema = new Schema({
 
     status: {
         type: String,
-        enum: ["USER_CONFIRMED", "COMPLETED", "CANCELLED"],
-        default: "USER_CONFIRMED"
+        enum: ["PENDING", "COMPLETED", "CANCELLED"],
+        default: "PENDING"
     }
 
 }, { timestamps: true });

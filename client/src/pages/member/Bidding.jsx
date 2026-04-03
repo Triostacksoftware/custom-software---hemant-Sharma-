@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Gavel, CalendarClock, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Gavel, CalendarClock, PlayCircle, CheckCircle } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import { userApi } from '../../api/userApi';
 import './Bidding.css';
 
 const BiddingDashboard = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [rounds, setRounds] = useState([]);
@@ -76,12 +78,32 @@ const BiddingDashboard = () => {
                                         <div className={`icon-wrapper ${round.status === 'OPEN' ? 'green-icon' : 'blue-icon'}`}>
                                             <Gavel size={28} />
                                         </div>
-                                        <div className="list-card-info">
-                                            <h3 className="elder-card-title">{round.groupName}</h3>
+                                        <div className="list-card-info" style={{ width: '100%' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                                <h3 className="elder-card-title">{round.groupName}</h3>
+                                                <span className="month-badge">Month {round.monthNumber}</span>
+                                            </div>
 
                                             {round.status === 'OPEN' ? (
                                                 <div className="status-indicator text-green">
                                                     <span className="live-dot"></span> Bidding is LIVE right now!
+                                                </div>
+                                            ) : round.status === 'PAYMENT_OPEN' || round.status === 'CLOSED' ? (
+                                                <div className="results-summary-mini">
+                                                    <div className="results-summary-header">
+                                                        <CheckCircle size={16} /> Bidding Concluded
+                                                    </div>
+                                                    {round.winnerUserId ? (
+                                                        <div className="results-summary-text">
+                                                            {String(round.winnerUserId) === String(user?._id)
+                                                                ? "🎉 You won! Wait for agent to process payout."
+                                                                : `You owe: ₹${round.payablePerMember} (Dividend: ₹${round.dividendPerMember})`}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="results-summary-awaiting">
+                                                            Awaiting Tie Resolution...
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="status-indicator text-gray">
@@ -93,12 +115,12 @@ const BiddingDashboard = () => {
                                     </div>
 
                                     <div className="list-card-right">
-                                        {round.status === 'OPEN' ? (
+                                        {(round.status === 'OPEN' || round.status === 'CLOSED' || round.status === 'PAYMENT_OPEN') ? (
                                             <button
                                                 className="elder-btn-primary enter-room-btn"
                                                 onClick={() => navigate(`/user/bidding/room/${round.biddingRoundId}`)}
                                             >
-                                                <PlayCircle size={20} /> Enter Room
+                                                <PlayCircle size={20} /> {round.status === 'OPEN' ? 'Enter Room' : 'View Results'}
                                             </button>
                                         ) : (
                                             <button className="elder-btn-secondary" disabled>

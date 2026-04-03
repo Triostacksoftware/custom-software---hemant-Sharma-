@@ -292,12 +292,12 @@ exports.getDashboardStats = async (req, res, next) => {
     }
 };
 
-//controller for creating groups
+// Controller for creating groups
 exports.createGroup = async (req, res, next) => {
     try {
         const { name, totalMembers, totalMonths, monthlyContribution } = req.body;
 
-        //form data validation
+        // Form data validation
         if (!name || !totalMembers || !totalMonths || !monthlyContribution) {
             return res.status(400).json({
                 success: false,
@@ -305,7 +305,7 @@ exports.createGroup = async (req, res, next) => {
             });
         }
 
-        //business logic validation
+        // Business logic validation
         if (totalMembers !== totalMonths) {
             return res.status(400).json({
                 success: false,
@@ -320,12 +320,29 @@ exports.createGroup = async (req, res, next) => {
             });
         }
 
-        //create group in DRAFT state
+        // totalMembers must account for at least one regular member alongside admin
+        if (totalMembers < 2) {
+            return res.status(400).json({
+                success: false,
+                message: "Group must have at least 2 members (including admin)"
+            });
+        }
+
+        // ── FIX: Set adminId to the logged-in admin ───────────────────────────
+        //
+        // Admin is a member of every group by default but is NOT pushed into
+        // members[] because members[].userId refs the User model and admin
+        // lives in the Employee model. Mixing refs would break populate().
+        //
+        // Instead, adminId tracks admin membership separately.
+        // Capacity logic: totalMembers - 1 slots are available for regular members.
+        // Admin occupies the remaining slot implicitly via adminId.
         const group = await Groups.create({
             name,
             totalMembers,
             totalMonths,
             monthlyContribution,
+            adminId: req.employee._id,   // auto-set to logged-in admin
             members: [],
             currentMonth: 1,
             status: "DRAFT"
@@ -338,24 +355,28 @@ exports.createGroup = async (req, res, next) => {
         });
 
     } catch (error) {
-
         next(error);
     }
-}
+};
 
-//controller for adding members to group
+
+// Controller for adding members to group
 exports.addMemberToGroup = async (req, res, next) => {
     try {
-        const { groupId } = req.params;   //groupId to be sent as query params
-        const { userId } = req.body;      //userId on request body, can be configured later
+        const { groupId } = req.params;
+        const { userId } = req.body;
 
-        //validate IDs
+        // Validate IDs
         if (!mongoose.Types.ObjectId.isValid(groupId) || !mongoose.Types.ObjectId.isValid(userId)) {
-            return res.status(400).json({ success: false, message: "Invalid groupId or userId" });
-
+            return res.status(400).json({
+                success: false,
+                message: "Invalid groupId or userId"
+            });
         }
-        //fetch group
+
+        // Fetch group
         const group = await Groups.findById(groupId);
+
         if (!group) {
             return res.status(404).json({
                 success: false,
@@ -363,7 +384,7 @@ exports.addMemberToGroup = async (req, res, next) => {
             });
         }
 
-        //check group status(member can;t be added if group is no in DRAFT state)
+        // Members can only be added while group is in DRAFT state
         if (group.status !== "DRAFT") {
             return res.status(400).json({
                 success: false,
@@ -371,16 +392,21 @@ exports.addMemberToGroup = async (req, res, next) => {
             });
         }
 
-        //check capacity of group (number of members should not be greater than totalMembers)
-        if (group.members.length >= group.totalMembers) {
+        // ── FIX: Capacity check uses totalMembers - 1 ─────────────────────────
+        //
+        // Admin occupies one slot via adminId (not in members[]).
+        // Regular members fill the remaining totalMembers - 1 slots.
+        // Example: totalMembers = 4 → admin + 3 regular members.
+        if (group.members.length >= group.totalMembers - 1) {
             return res.status(400).json({
                 success: false,
                 message: "Group member limit reached"
             });
         }
 
-        //fetch users
+        // Fetch user
         const user = await User.findById(userId);
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -388,27 +414,27 @@ exports.addMemberToGroup = async (req, res, next) => {
             });
         }
 
-        //only approved users can be added to groups
+        // Only approved users can be added
         if (user.approvalStatus !== "APPROVED") {
             return res.status(403).json({
                 success: false,
-                message: "User is not approved"
+                message: "Only approved users can be added to a group"
             });
         }
 
-        //prevent duplicate member addition
+        // Prevent duplicate member addition
         const alreadyMember = group.members.some(
-            member => member.userId.toString() === userId
+            m => m.userId.toString() === userId
         );
 
         if (alreadyMember) {
             return res.status(409).json({
                 success: false,
-                message: "User already added to this group"
+                message: "User is already a member of this group"
             });
         }
 
-        //add member
+        // Add member
         group.members.push({
             userId,
             hasWon: false,
@@ -420,14 +446,14 @@ exports.addMemberToGroup = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Member added to group successfully",
-            currentCount: group.members.length
+            data: {
+                currentMemberCount: group.members.length,           // regular members added so far
+                remainingSlots: group.totalMembers - 1 - group.members.length  // slots left for regular members
+            }
         });
 
-
     } catch (error) {
-
         next(error);
-
     }
 };
 
@@ -463,32 +489,51 @@ exports.activateGroup = async (req, res, next) => {
         }
 
         //member count must match
-        if (group.members.length !== group.totalMembers) {
+        if (group.members.length !== group.totalMembers - 1) {
             return res.status(400).json({
                 success: false,
                 message: "Group must have all members before activation"
             });
         }
 
+        // === FIX: CREATE MONTH 1 ADMIN ROUND ===
+        const totalPoolAmount = group.totalMembers * group.monthlyContribution;
+
+        // Create the initial Admin Round document so the collection APIs know members owe money
+        await BiddingRound.create({
+            groupId: group._id,
+            monthNumber: 1, // Instantly starts at Month 1
+            status: "ADMIN_ROUND", // Flags it so bidding cannot happen
+            totalPoolAmount: totalPoolAmount,
+            payablePerMember: group.monthlyContribution, // Members pay full amount, no dividend
+            dividendPerMember: 0,
+            winningBidAmount: 0,
+            winnerReceivableAmount: totalPoolAmount, // Admin takes the whole pot
+            startedAt: new Date(),
+            endedAt: new Date() // Time doesn't matter for Admin Round, it goes straight to collection
+        });
+
+        // Set all members' payment status to PENDING for the new month
+        group.members.forEach(member => {
+            member.currentPaymentStatus = "PENDING";
+        });
+
         //activate group
         group.status = "ACTIVE";
-
         group.startDate = new Date();
 
         await group.save();
 
         return res.status(200).json({
             success: true,
-            message: "Group activated successfully",
+            message: "Group activated successfully. Month 1 collections are now open.",
             startDate: group.startDate
         });
 
     } catch (error) {
-
         next(error);
     }
 };
-
 
 //controller to fetch all the members
 exports.getMembers = async (req, res, next) => {
@@ -1256,6 +1301,8 @@ exports.openBidding = async (req, res, next) => {
     try {
         const { groupId, minBid, maxBid, bidMultiple } = req.body;
 
+        console.log("bidding constraints", req.body);
+
         //Input validation
         if (!groupId) {
             return res.status(400).json({
@@ -1726,7 +1773,6 @@ exports.resolveTie = async (req, res, next) => {
 // Controller to finalize bidding and move the group to the next month.
 exports.finalizeBidding = async (req, res, next) => {
     try {
-
         const { biddingRoundId } = req.body;
 
         if (!biddingRoundId) {
@@ -1736,7 +1782,7 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        //Fetch and validate bidding round
+        // Fetch and validate bidding round
         const round = await BiddingRound.findById(biddingRoundId);
 
         if (!round) {
@@ -1746,14 +1792,18 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
+        // Only PAYMENT_OPEN rounds can be manually finalized.
+        // ADMIN_ROUND finalizes automatically via confirmTransaction.
         if (round.status !== "PAYMENT_OPEN") {
             return res.status(400).json({
                 success: false,
-                message: "Bidding cannot be finalized at this stage"
+                message: round.status === "ADMIN_ROUND"
+                    ? "Month 1 (admin round) finalizes automatically when all members have paid"
+                    : `Bidding cannot be finalized at this stage. Current status: ${round.status}`
             });
         }
 
-        //Fetch group with member details
+        // Fetch group with member details
         const group = await Groups.findById(round.groupId)
             .populate("members.userId", "name phoneNumber")
             .lean();
@@ -1769,14 +1819,12 @@ exports.finalizeBidding = async (req, res, next) => {
         const payablePerMember = round.payablePerMember;
         const winnerReceivable = round.winnerReceivableAmount;
 
-        //Aggregate COMPLETED amounts per member for this round and
-        // compare each against the required amount. Any member whose COMPLETED total
-        // is less than their required amount is genuinely pending.
+        // Aggregate COMPLETED amounts per member for this round
         const completedAgg = await Transaction.aggregate([
             {
                 $match: {
                     biddingRoundId: new mongoose.Types.ObjectId(biddingRoundId),
-                    status: "COMPLETED"    // only count employee-verified payments
+                    status: "COMPLETED"
                 }
             },
             {
@@ -1787,9 +1835,9 @@ exports.finalizeBidding = async (req, res, next) => {
             }
         ]);
 
-        // Build lookup maps: userId → completed total
-        const completedContributionMap = new Map(); // non-winner contributions
-        let completedPayoutTotal = 0;               // winner payout received
+        // Build lookup maps
+        const completedContributionMap = new Map();
+        let completedPayoutTotal = 0;
 
         completedAgg.forEach(entry => {
             const uid = entry._id.userId.toString();
@@ -1798,15 +1846,13 @@ exports.finalizeBidding = async (req, res, next) => {
             if (type === "WINNER_PAYOUT") completedPayoutTotal = entry.totalCompleted;
         });
 
-        //Check each non-winning member's contribution
+        // Check each non-winning member's contribution
         const activeMembers = group.members.filter(m => m.status === "ACTIVE");
-
-        const pendingMembers = []; // collects everyone who hasn't fully paid/received
+        const pendingMembers = [];
 
         activeMembers.forEach(member => {
             const memberId = member.userId._id.toString();
-
-            if (memberId === winnerId) return; // winner checked separately below
+            if (memberId === winnerId) return;
 
             const completed = completedContributionMap.get(memberId) || 0;
             const remaining = payablePerMember - completed;
@@ -1823,7 +1869,7 @@ exports.finalizeBidding = async (req, res, next) => {
             }
         });
 
-        //Check winner's payout receipt
+        // Check winner's payout
         const winnerRemainingPayout = winnerReceivable - completedPayoutTotal;
 
         if (winnerRemainingPayout > 0) {
@@ -1842,7 +1888,7 @@ exports.finalizeBidding = async (req, res, next) => {
             }
         }
 
-        //Block finalization if anyone is still pending
+        // Block finalization if anyone is pending
         if (pendingMembers.length > 0) {
             return res.status(400).json({
                 success: false,
@@ -1851,35 +1897,75 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        //All payments verified — finalize the round
+        // ── All payments verified — finalize ──────────────────────────────────
+        const now = new Date();
+
         const roundDoc = await BiddingRound.findById(biddingRoundId);
         roundDoc.status = "FINALIZED";
-        roundDoc.finalizedAt = new Date();
+        roundDoc.finalizedAt = now;
         await roundDoc.save();
 
-        // Move group to next month and reset member payment statuses
+        // Move group to next month and reset payment statuses
         const groupDoc = await Groups.findById(round.groupId);
         groupDoc.currentMonth += 1;
         groupDoc.members.forEach(member => {
             member.currentPaymentStatus = "PENDING";
         });
 
-        // Mark the group as COMPLETED if the full cycle is done
+        // Mark group COMPLETED if full cycle is done
         if (groupDoc.currentMonth > groupDoc.totalMonths) {
             groupDoc.status = "COMPLETED";
+            await groupDoc.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "Bidding finalized. Group cycle is now complete!",
+                data: {
+                    groupId: groupDoc._id,
+                    groupStatus: "COMPLETED",
+                    totalMonths: groupDoc.totalMonths
+                }
+            });
         }
 
         await groupDoc.save();
 
+        // ── Create next month's BiddingRound ──────────────────────────────────
+        //
+        // Created with status PENDING — admin sets bid limits and opens it
+        // when ready on the scheduled bidding day.
+        // scheduledBiddingDate = 30 days from now so cron jobs can send reminders.
+        const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const totalPoolAmount = groupDoc.totalMembers * groupDoc.monthlyContribution;
+
+        const nextRound = await BiddingRound.create({
+            groupId: groupDoc._id,
+            monthNumber: groupDoc.currentMonth,
+            status: "PENDING",
+            totalPoolAmount,
+            isAdminRound: false,
+            scheduledBiddingDate,
+            // Admin sets these when opening bidding
+            minBid: 0,
+            maxBid: 0,
+            bidMultiple: 1
+        });
+
+        // TODO: notify admin — next bidding scheduled for scheduledBiddingDate
+        // TODO: notify all group members — month complete, next bidding scheduled
+        // to be implemented in notifications phase
+
         return res.status(200).json({
             success: true,
-            message: "Bidding finalized successfully",
+            message: "Bidding finalized successfully. Next month's round is scheduled.",
             data: {
                 groupId: groupDoc._id,
-                biddingRoundId: roundDoc._id,
+                finalizedRoundId: roundDoc._id,
                 nextMonth: groupDoc.currentMonth,
                 groupStatus: groupDoc.status,
-                totalMonths: groupDoc.totalMonths
+                totalMonths: groupDoc.totalMonths,
+                nextRoundId: nextRound._id,
+                scheduledBiddingDate: nextRound.scheduledBiddingDate
             }
         });
 

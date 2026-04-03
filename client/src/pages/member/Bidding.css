@@ -50,6 +50,39 @@
     animation: pulse 1.5s infinite;
 }
 
+/* === NEW: HUB RESULTS SUMMARY STYLES === */
+.results-summary-mini {
+    margin-top: 0.75rem;
+    background: #f0fdf4;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    border: 1px solid #bbf7d0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.results-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #15803d;
+    font-weight: 700;
+}
+
+.results-summary-text {
+    font-size: 0.9rem;
+    color: #166534;
+    margin-top: 0.25rem;
+}
+
+.results-summary-awaiting {
+    font-size: 0.9rem;
+    color: #b45309;
+    margin-top: 0.25rem;
+}
+
+/* Animations */
 @keyframes pulse {
     0% {
         transform: scale(0.95);
@@ -67,6 +100,17 @@
     }
 }
 
+.spin-slow {
+    animation: spin 3s linear infinite;
+}
+
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Buttons */
 .enter-room-btn {
     display: flex;
     align-items: center;
@@ -77,7 +121,6 @@
 .enter-room-btn:hover {
     background: #059669;
 }
-
 
 /* === LIVE BIDDING ROOM STYLES === */
 .room-container {
@@ -250,6 +293,18 @@
     color: #dc2626;
     font-weight: 700;
     padding: 1rem;
+}
+
+/* Add this anywhere in Bidding.css */
+.month-badge {
+    background: #e0e7ff;
+    color: #1e40af;
+    padding: 0.25rem 0.75rem;
+    border-radius: 99px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    border: 1px solid #bfdbfe;
+    white-space: nowrap;
 }
 
 /* === MOBILE === */

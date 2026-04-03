@@ -7,14 +7,24 @@ export const employeeApi = {
     // Active groups
     getActiveGroups: () => api.get('/employee/groups/active'),
 
-    // Pending transactions (contributions + payout) for a group
-    getPendingTransactions: (groupId) => api.get(`/employee/groups/${groupId}/pending_members/`),
+    // Member Lookups
+    getPendingMembers: (groupId, params = {}) => api.get('/employee/pending_members/', {
+        params: { ...params, groupId }
+    }),
 
-    // Log transaction (contribution or payout)
-    logTransaction: (data) => api.post('/employee/group/contribution/log_contribution/', data),
+    // Transaction Actions
+    initiateTransaction: (data) => api.post('/employee/log_transaction/', data),
 
     // Transaction history
     getTransactionHistory: (params = {}) => api.get('/employee/transactions/history', { params }),
+
+    // === Notification Endpoints (NEW) ===
+    getUnreadNotifications: () => api.get('/employee/notifications/unread-count'),
+    getNotificationsList: (unreadOnly = false, limit = 5, page = 1) => {
+        let url = `/employee/notifications?page=${page}&limit=${limit}`;
+        if (unreadOnly) url += `&unreadOnly=true`;
+        return api.get(url);
+    }
 
 };
 

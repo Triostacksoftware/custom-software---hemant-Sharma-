@@ -43,11 +43,11 @@ export const adminApi = {
     // Bidding Actions
     bidding: {
         getCurrentRound: (groupId) => api.get(`/admin/bidding/current/${groupId}`),
-        open: (groupId) => api.post('/admin/bidding/open', { groupId }),
-        close: (biddingRoundId) => api.post('/admin/bidding/close', { biddingRoundId }),
+        open: (data) => api.post('/admin/bidding/open', data),
+        close: (data) => api.post('/admin/bidding/close', data),
         resolveTie: (biddingRoundId, winnerUserId) =>
             api.post('/admin/bidding/resolve-tie', { biddingRoundId, winnerUserId }),
-        finalize: (biddingRoundId) => api.post('/admin/bidding/finalize', { biddingRoundId }),
+        finalize: (data) => api.post('/admin/bidding/finalize', data),
         getBids: (roundId) => api.get(`/admin/bidding/round/${roundId}/bids`),
     },
 

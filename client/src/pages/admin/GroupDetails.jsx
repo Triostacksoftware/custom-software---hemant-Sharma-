@@ -92,14 +92,17 @@ const GroupDetailsAdmin = () => {
         const { userId } = confirmAddModal;
         setConfirmAddModal({ show: false, userId: null, name: '' });
 
+        // Optimistically remove user from available list to prevent double clicks
+        setAvailableMembers(prev => prev.filter(m => m._id !== userId));
+
         try {
             await adminApi.groups.addMember(groupId, userId);
-            // Refresh data
+            // Refresh data behind the scenes
             await fetchDetails();
-            // Refresh available list in case admin wants to add more
-            loadAvailableMembers(searchQuery);
         } catch (err) {
             alert(err.response?.data?.message || 'Failed to add member');
+            // Re-fetch search list just in case it failed, so they re-appear
+            loadAvailableMembers(searchQuery);
         }
     };
 
@@ -110,7 +113,9 @@ const GroupDetailsAdmin = () => {
 
     const { group, financialSummary, members } = data;
     const isDraft = group.status === 'DRAFT';
-    const isFull = group.totalMembers === members.length;
+
+    // Group is full when members length matches totalMembers MINUS 1 (Admin)
+    const isFull = group.totalMembers === members.length + 1;
 
     return (
         <div className="admin-groups-container">
@@ -141,7 +146,8 @@ const GroupDetailsAdmin = () => {
                     </div>
                     <div className="g-stat-box">
                         <p>Group Capacity</p>
-                        <h4>{members.length} / {group.totalMembers}</h4>
+                        {/* Add +1 to capacity to include Admin */}
+                        <h4>{members.length + 1} / {group.totalMembers}</h4>
                     </div>
                     <div className="g-stat-box bg-red-light border-red">
                         <p className="text-red flex-align"><TrendingDown size={16} /> Pending Collection (Month)</p>

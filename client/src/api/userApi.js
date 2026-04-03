@@ -1,6 +1,7 @@
 import api from './axiosConfig';
 
 export const userApi = {
+
     // === Dashboard Endpoints ===
     getDashboardStats: () => api.get('/user/dashboard'),
     getUnreadNotifications: () => api.get('/user/notifications/unread-count'),
@@ -22,12 +23,9 @@ export const userApi = {
     // === Transaction Endpoints ===
     confirmTransaction: (data) => api.post('/user/transaction/confirm', data),
     getEmployees: () => api.get('/member/get_employees/'),
-    getTransactionHistory: (page = 1, limit = 10, type = null) => {
-        let url = `/user/transactions?page=${page}&limit=${limit}`;
-        if (type) url += `&type=${type}`;
-        return api.get(url);
-    },
+    getTransactionHistory: (params = {}) => api.get('/user/transactions', { params }),
     getPendingDues: () => api.get('/user/requests/pending-dues'),
+
     // We will mock this one for now, but you can wire it up later
     sendNotificationRequest: (data) => api.post('/user/requests/send-notification', data),
 };

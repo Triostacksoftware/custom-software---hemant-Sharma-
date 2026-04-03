@@ -127,7 +127,8 @@ const Groups = () => {
                                             <div className="person-details-inline">
                                                 <span className="detail-text">{formatCurrency(group.monthlyContribution)}/mo</span>
                                                 <span className="stat-divider">•</span>
-                                                <span className="detail-text">{group.memberCount} / {group.totalMembers} Members</span>
+                                                {/* FIX: Add + 1 to account for the Admin */}
+                                                <span className="detail-text">{(group.memberCount || 0) + 1} / {group.totalMembers} Members</span>
                                                 <span className="stat-divider">•</span>
                                                 <span className="detail-text">Month {group.currentMonth} of {group.totalMonths}</span>
                                             </div>

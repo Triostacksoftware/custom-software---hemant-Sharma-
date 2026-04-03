@@ -127,7 +127,7 @@ exports.getBiddingDashboard = async (req, res, next) => {
             groupId: { $in: groupIds },
             status: { $nin: ["FINALIZED", "ADMIN_ROUND", "COLLECTION_DONE"] }
         })
-            .select("groupId monthNumber status scheduledBiddingDate startedAt endedAt minBid maxBid bidMultiple")
+            .select("groupId monthNumber status scheduledBiddingDate startedAt endedAt minBid maxBid bidMultiple winnerUserId winningBidAmount dividendPerMember payablePerMember")
             .lean();
 
         // Filter to only current month's round per group
@@ -142,7 +142,13 @@ exports.getBiddingDashboard = async (req, res, next) => {
             biddingRoundId: round._id,
             status: round.status,
             scheduledBiddingDate: round.scheduledBiddingDate || null,
-            endedAt: round.endedAt || null
+            endedAt: round.endedAt || null,
+            monthNumber: round.monthNumber,
+
+            // Added for the Dashboard UI
+            winnerUserId: round.winnerUserId || null,
+            dividendPerMember: round.dividendPerMember || 0,
+            payablePerMember: round.payablePerMember || 0
         }));
 
         return res.status(200).json({
@@ -193,8 +199,18 @@ exports.getBiddingRoom = async (req, res, next) => {
             });
         }
 
-        // Only OPEN rounds have a live room to enter
-        if (round.status !== "OPEN") {
+        // // Only OPEN rounds have a live room to enter
+        // if (round.status !== "OPEN") {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: `Bidding room is not available. Current status: ${round.status}`
+        //     });
+        // }
+
+        // Allow entry for OPEN, CLOSED, PAYMENT_OPEN, and FINALIZED. 
+        // (Block UPCOMING or DRAFT if you have them)
+        const allowedStatuses = ["OPEN", "CLOSED", "PAYMENT_OPEN"];
+        if (!allowedStatuses.includes(round.status)) {
             return res.status(400).json({
                 success: false,
                 message: `Bidding room is not available. Current status: ${round.status}`
@@ -225,7 +241,15 @@ exports.getBiddingRoom = async (req, res, next) => {
                     minBid: round.minBid,
                     maxBid: round.maxBid,
                     bidMultiple: round.bidMultiple,
-                    endedAt: round.endedAt
+                    endedAt: round.endedAt,
+                    monthNumber: round.monthNumber,
+
+                    // Added Financial Results for the UI to display if closed
+                    winnerUserId: round.winnerUserId || null,
+                    winningBidAmount: round.winningBidAmount || 0,
+                    dividendPerMember: round.dividendPerMember || 0,
+                    payablePerMember: round.payablePerMember || 0,
+                    winnerReceivableAmount: round.winnerReceivableAmount || 0
                 },
                 bids: formattedBids
             }
@@ -371,223 +395,93 @@ exports.placeBid = async (req, res, next) => {
 
 
 // Controller to confirm transaction (contribution and payout both).
-// The employee side (logTransaction) will later mark it COMPLETED.
 exports.confirmTransaction = async (req, res, next) => {
     try {
-
-        const {
-            groupId,
-            biddingRoundId,
-            monthNumber,
-            amount,
-            type,
-            paymentMode,   // member specifies how they paid e.g. CASH, UPI
-            handledBy      // _id of the employee who collected/delivered
-        } = req.body;
-
+        const { transactionId } = req.body;
         const userId = req.user._id;
 
-        //Basic field validation
-        if (!groupId || !monthNumber || !amount || !type || !paymentMode || !handledBy) {
+        if (!transactionId) {
             return res.status(400).json({
                 success: false,
-                message: "Missing required fields"
+                message: "transactionId is required"
             });
         }
 
-        if (!mongoose.Types.ObjectId.isValid(biddingRoundId)) {
+        if (!mongoose.Types.ObjectId.isValid(transactionId)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid biddingRoundId"
+                message: "Invalid transactionId"
             });
         }
 
-        if (!mongoose.Types.ObjectId.isValid(groupId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid groupId"
-            });
-        }
+        // Fetch the transaction
+        const transaction = await Transaction.findById(transactionId);
 
-        if (!mongoose.Types.ObjectId.isValid(handledBy)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid employee ID"
-            });
-        }
-
-        if (amount <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Amount must be greater than 0"
-            });
-        }
-
-        if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid transaction type"
-            });
-        }
-
-        if (!["CASH", "UPI", "INTERNET_BANKING", "CHEQUE"].includes(paymentMode)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid payment mode"
-            });
-        }
-
-        //Validate employee exists and is approved
-        // Prevent members from selecting a non-existent or unapproved employee
-        const employee = await Employee.findOne({
-            _id: handledBy,
-            approvalStatus: "APPROVED"
-        }).lean();
-
-        if (!employee) {
+        if (!transaction) {
             return res.status(404).json({
                 success: false,
-                message: "Selected employee not found or not approved"
+                message: "Transaction not found"
             });
         }
 
-        //Fetch and validate group
-        const group = await Groups.findById(groupId);
-
-        if (!group) {
-            return res.status(404).json({
-                success: false,
-                message: "Group not found"
-            });
-        }
-
-        if (group.status !== "ACTIVE") {
-            return res.status(400).json({
-                success: false,
-                message: "Group not active"
-            });
-        }
-
-        const member = group.members.find(
-            m => m.userId.toString() === userId.toString()
-        );
-
-        if (!member) {
+        // Must belong to this member
+        if (transaction.userId.toString() !== userId.toString()) {
             return res.status(403).json({
                 success: false,
-                message: "User not member of this group"
+                message: "This transaction does not belong to you"
             });
         }
 
-        //Fetch and validate bidding round
-        const round = await BiddingRound.findById(biddingRoundId);
-
-        if (!round) {
-            return res.status(404).json({
-                success: false,
-                message: "Bidding round not found"
-            });
-        }
-
-        if (round.status !== "PAYMENT_OPEN") {
+        // Must be PENDING
+        if (transaction.status !== "PENDING") {
             return res.status(400).json({
                 success: false,
-                message: "Payments not open yet"
+                message: `Transaction cannot be confirmed. Current status: ${transaction.status}`
             });
         }
 
-        if (
-            round.groupId.toString() !== groupId ||
-            round.monthNumber !== monthNumber
-        ) {
+        // Verify the round is still in a valid payment phase
+        const round = await BiddingRound.findById(transaction.biddingRoundId);
+
+        if (!round || !["PAYMENT_OPEN", "ADMIN_ROUND"].includes(round.status)) {
             return res.status(400).json({
                 success: false,
-                message: "Round does not belong to this group/month"
+                message: "Payment phase is no longer active for this round"
             });
         }
 
-        // CONTRIBUTION: validate amount does not exceed remaining balance
-        if (type === "CONTRIBUTION") {
+        // Mark transaction as COMPLETED
+        transaction.status = "COMPLETED";
+        await transaction.save();
 
-            if (round.winnerUserId.toString() === userId.toString()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Winner does not pay contribution"
-                });
-            }
+        // TODO: emit socket event to employee notifying member confirmed
+        // to be implemented in notifications phase
 
-            const previousTransactions = await Transaction.find({
-                groupId,
-                userId,
-                monthNumber,
-                type: "CONTRIBUTION",
-                status: { $in: ["USER_CONFIRMED", "COMPLETED"] }
-            }).select("amount").lean();
+        // ── Auto-finalize check — ADMIN_ROUND (month 1) only ─────────────────
+        //
+        // After every ADMIN_ROUND confirmation, check if ALL members have
+        // fully paid their contribution. If yes, auto-finalize immediately.
+        //
+        // Month 2+ finalization is manual via the admin finalizeBidding controller
+        // because it involves winner payout verification and admin review.
+        let autoFinalized = false;
 
-            const total = previousTransactions.reduce(
-                (sum, t) => sum + t.amount, 0
-            );
-
-            if (total + amount > round.payablePerMember) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Contribution exceeds limit. Confirmed so far: ${total}/${round.payablePerMember}`
-                });
-            }
-
+        if (round.status === "ADMIN_ROUND") {
+            autoFinalized = await checkAndAutoFinalizeAdminRound(round);
         }
 
-        //WINNER_PAYOUT: validate amount does not exceed remaining payout
-        if (type === "WINNER_PAYOUT") {
-
-            if (round.winnerUserId.toString() !== userId.toString()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Only winner receives payout"
-                });
-            }
-
-            const previousPayouts = await Transaction.find({
-                groupId,
-                userId,
-                monthNumber,
-                type: "WINNER_PAYOUT",
-                status: { $in: ["USER_CONFIRMED", "COMPLETED"] }
-            }).select("amount").lean();
-
-            const total = previousPayouts.reduce(
-                (sum, t) => sum + t.amount, 0
-            );
-
-            const winnerReceivable = round.totalPoolAmount - round.winningBidAmount;
-
-            if (total + amount > winnerReceivable) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Payout exceeds receivable amount. Confirmed so far: ${total}/${winnerReceivable}`
-                });
-            }
-
-        }
-
-        // Create the USER_CONFIRMED transaction with payment details
-        // paymentMode and handledBy are saved now so the employee side
-        // (logTransaction) only needs to verify and flip status to COMPLETED
-        await Transaction.create({
-            groupId,
-            userId,
-            biddingRoundId,
-            monthNumber,
-            amount,
-            type,
-            paymentMode,
-            handledBy,
-            status: "USER_CONFIRMED"
-        });
-
-        return res.status(201).json({
+        return res.status(200).json({
             success: true,
-            message: "Transaction confirmation recorded"
+            message: autoFinalized
+                ? "Transaction confirmed. All payments complete — group moved to next month!"
+                : "Transaction confirmed successfully",
+            data: {
+                transactionId: transaction._id,
+                amount: transaction.amount,
+                type: transaction.type,
+                status: "COMPLETED",
+                autoFinalized
+            }
         });
 
     } catch (error) {
@@ -595,6 +489,115 @@ exports.confirmTransaction = async (req, res, next) => {
     }
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: checkAndAutoFinalizeAdminRound
+//
+// Called after every COMPLETED contribution in an ADMIN_ROUND.
+// Checks if every non-admin member has fully paid payablePerMember.
+// If all paid → finalizes the round, increments month, creates month 2 round.
+// Returns true if finalization happened, false otherwise.
+// ─────────────────────────────────────────────────────────────────────────────
+async function checkAndAutoFinalizeAdminRound(round) {
+    try {
+        const group = await Groups.findById(round.groupId).lean();
+        if (!group) return false;
+
+        // members[] contains only regular User members (not admin).
+        // All of them must pay payablePerMember in month 1.
+        const activeMembers = group.members.filter(m => m.status === "ACTIVE");
+        const requiredPerMember = round.payablePerMember;
+
+        // Aggregate COMPLETED contributions for this round
+        const completedAgg = await Transaction.aggregate([
+            {
+                $match: {
+                    biddingRoundId: new mongoose.Types.ObjectId(round._id),
+                    type: "CONTRIBUTION",
+                    status: "COMPLETED"
+                }
+            },
+            {
+                $group: {
+                    _id: "$userId",
+                    totalPaid: { $sum: "$amount" }
+                }
+            }
+        ]);
+
+        // Build map: userId -> totalPaid
+        const paidMap = new Map(
+            completedAgg.map(e => [e._id.toString(), e.totalPaid])
+        );
+
+        // Check every active member has paid in full
+        const allPaid = activeMembers.every(member => {
+            const memberId = member.userId.toString();
+            const totalPaid = paidMap.get(memberId) || 0;
+            return totalPaid >= requiredPerMember;
+        });
+
+        if (!allPaid) return false;
+
+        // ── All paid — finalize ───────────────────────────────────────────────
+        const now = new Date();
+
+        // 1. Finalize the ADMIN_ROUND
+        await BiddingRound.findByIdAndUpdate(round._id, {
+            $set: {
+                status: "FINALIZED",
+                finalizedAt: now
+            }
+        });
+
+        // 2. Move group to month 2 and reset payment statuses
+        const groupDoc = await Groups.findById(round.groupId);
+        groupDoc.currentMonth += 1;
+        groupDoc.members.forEach(m => {
+            m.currentPaymentStatus = "PENDING";
+        });
+
+        // Mark group COMPLETED if full cycle is done
+        if (groupDoc.currentMonth > groupDoc.totalMonths) {
+            groupDoc.status = "COMPLETED";
+            await groupDoc.save();
+            return true; // no next round needed
+        }
+
+        await groupDoc.save();
+
+        // 3. Create month 2 BiddingRound with PENDING status
+        //    scheduledBiddingDate = 30 days from now
+        //    Admin will set minBid, maxBid, bidMultiple when opening bidding
+        const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const totalPoolAmount = groupDoc.totalMembers * groupDoc.monthlyContribution;
+
+        await BiddingRound.create({
+            groupId: groupDoc._id,
+            monthNumber: groupDoc.currentMonth,
+            status: "PENDING",
+            totalPoolAmount,
+            isAdminRound: false,
+            scheduledBiddingDate,
+            // Admin sets these when opening bidding
+            minBid: 0,
+            maxBid: 0,
+            bidMultiple: 1
+        });
+
+        // TODO: notify admin and all members that month 1 is complete
+        // and bidding is scheduled for scheduledBiddingDate
+        // to be implemented in notifications phase
+
+        return true;
+
+    } catch (err) {
+        // Auto-finalize failure should not crash the confirmation response.
+        // The transaction is already COMPLETED — log the error and return false.
+        console.error("Auto-finalize error:", err);
+        return false;
+    }
+}
 
 //controller to get user dashboard data
 exports.getDashboardStats = async (req, res, next) => {
@@ -1196,7 +1199,7 @@ exports.getTransactionHistory = async (req, res, next) => {
 
         // Optional filters — only applied if query param is present and valid
         const VALID_TYPES = ["CONTRIBUTION", "WINNER_PAYOUT"];
-        const VALID_STATUSES = ["USER_CONFIRMED", "COMPLETED", "CANCELLED"];
+        const VALID_STATUSES = ["PENDING", "COMPLETED", "CANCELLED"];
 
         if (req.query.type && VALID_TYPES.includes(req.query.type)) {
             filter.type = req.query.type;
