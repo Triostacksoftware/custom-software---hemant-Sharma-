@@ -45,8 +45,8 @@ export const adminApi = {
         getCurrentRound: (groupId) => api.get(`/admin/bidding/current/${groupId}`),
         open: (data) => api.post('/admin/bidding/open', data),
         close: (data) => api.post('/admin/bidding/close', data),
-        resolveTie: (biddingRoundId, winnerUserId) =>
-            api.post('/admin/bidding/resolve-tie', { biddingRoundId, winnerUserId }),
+        resolveTie: (data) =>
+            api.post('/admin/bidding/resolve-tie', data),
         finalize: (data) => api.post('/admin/bidding/finalize', data),
         getBids: (roundId) => api.get(`/admin/bidding/round/${roundId}/bids`),
     },
@@ -75,12 +75,13 @@ export const adminApi = {
     getDashboardStats: () => api.get('/admin/dashboard/stats/'),
 
     // === Notification Endpoints ===
-    getUnreadNotifications: () => api.get('/admin/notifications/unread-count'), // Assuming admin uses the same notification logic
+    getUnreadNotifications: () => api.get('/admin/notifications/unread-count'),
     getNotificationsList: (unreadOnly = false, limit = 5, page = 1) => {
         let url = `/admin/notifications?page=${page}&limit=${limit}`;
         if (unreadOnly) url += `&unreadOnly=true`;
         return api.get(url);
     },
+    savePushSubscription: (data) => api.post('/admin/push-subscription', data),
 };
 
 export default adminApi;

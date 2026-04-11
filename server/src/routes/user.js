@@ -52,5 +52,7 @@ router.get('/user/transactions', authentication.isMember, userController.getTran
 //endpoint to fetch per-group pending dues for the raise request page
 router.get('/user/requests/pending-dues', authentication.isMember, userController.getPendingDues);
 
+//endpoint to save push subscription object
+router.post('/user/push-subscription', authentication.isMember, userController.savePushSubscription);
 
 module.exports = router;

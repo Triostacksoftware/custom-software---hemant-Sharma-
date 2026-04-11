@@ -90,4 +90,14 @@ router.patch('/admin/ads/:adId/deactivate', authentication.authenticate, authent
 router.delete('/admin/ads/:adId', authentication.authenticate, authentication.isAdmin, adminController.deleteAd);
 
 
+//endpoint to get unread notification count
+router.get('/admin/notifications/unread-count', authentication.authenticate, authentication.isAdmin, adminController.getUnreadNotificationCount);
+
+//endpoint to get unread notifications
+router.get('/admin/notifications', authentication.authenticate, authentication.isAdmin, adminController.getNotifications);
+
+//endpoint to save push subscription object
+router.post('/admin/push-subscription', authentication.authenticate, authentication.isAdmin, adminController.saveAdminPushSubscription);
+
+
 module.exports = router;

@@ -14,7 +14,7 @@ const BiddingRoom = () => {
     const [groupData, setGroupData] = useState(null);
     const [roundData, setRoundData] = useState(null);
     const [bids, setBids] = useState([]);
-    const [socket, setSocket] = useState(null); //State for socket connection
+    const [socket, setSocket] = useState(null);
 
     // Open Bidding Form State
     const [openForm, setOpenForm] = useState({ minBid: '', maxBid: '', bidMultiple: '' });
@@ -57,7 +57,7 @@ const BiddingRoom = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId]);
 
-    // === SOCKET CONNECTION FOR LIVE BIDS ===
+    // SOCKET CONNECTION FOR LIVE BIDS
     useEffect(() => {
         // Only connect if the round exists and we have its ID
         if (!roundData || !roundData._id) return;
@@ -91,15 +91,15 @@ const BiddingRoom = () => {
         return () => {
             if (newSocket) newSocket.disconnect();
         };
-    }, [roundData?._id]); // Run this effect when the round ID is available
+    }, [roundData?._id]);
 
     // Calculate Defaults for Form when groupData loads
     useEffect(() => {
-        if (groupData && !roundData) {
+        if (groupData && (!roundData || roundData.status === 'PENDING')) {
             const pool = groupData.monthlyContribution * groupData.totalMembers;
             setOpenForm({
-                minBid: pool * 0.10, // 10% default
-                maxBid: pool * 0.20, // 20% default
+                minBid: pool * 0.05, // 5% default (Adjusted slightly for broader options)
+                maxBid: pool * 0.30, // 30% default
                 bidMultiple: 100     // 100 default
             });
         }
@@ -202,7 +202,8 @@ const BiddingRoom = () => {
                             <h2>{formatCurrency(totalPool)}</h2>
                         </div>
 
-                        {!roundData && groupData.currentMonth > 1 && (
+                        {/* FIX: Show Setup Form if roundData doesn't exist OR if it is PENDING */}
+                        {(!roundData || roundData.status === 'PENDING') && groupData.currentMonth > 1 && (
                             <div className="action-box setup-box">
                                 <h4><PlayCircle size={20} /> Setup Bidding Round</h4>
                                 <form onSubmit={handleOpenBidding}>

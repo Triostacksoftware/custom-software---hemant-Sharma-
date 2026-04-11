@@ -1384,3 +1384,31 @@ exports.getPendingDues = async (req, res, next) => {
         next(error);
     }
 };
+
+
+// ── Member: POST /user/push-subscription ─────────────────────────────────────
+exports.savePushSubscription = async (req, res, next) => {
+    try {
+        const { subscription } = req.body;
+        const userId = req.user._id;
+
+        if (!subscription || !subscription.endpoint) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid push subscription object is required"
+            });
+        }
+
+        await User.findByIdAndUpdate(userId, {
+            $set: { pushSubscription: subscription }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Push subscription saved"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};

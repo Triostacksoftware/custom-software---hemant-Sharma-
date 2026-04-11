@@ -1,5 +1,10 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { authApi } from '../api/authApi';
+import { adminApi } from '../api/adminApi';
+import { employeeApi } from '../api/employeeApi';
+import { userApi } from '../api/userApi';
+import { setupPushNotifications } from '../utils/setupPushNotifications';
 
 // Helper to decode JWT token
 const decodeToken = (token) => {
@@ -24,13 +29,14 @@ const AuthContext = createContext({});
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [globalSocket, setGlobalSocket] = useState(null); // Added to hold personal socket
 
+    // Initial Load & Token Validation
     useEffect(() => {
         const token = localStorage.getItem('token');
         const role = localStorage.getItem('userRole');
         const name = localStorage.getItem('userName');
 
-        // We don't store the ID separately, so we need to decode token
         if (token && role) {
             const decoded = decodeToken(token);
             const userId = decoded?.employeeId || decoded?.userId || decoded?.id;
@@ -50,6 +56,40 @@ export const AuthProvider = ({ children }) => {
         }
         setLoading(false);
     }, []);
+
+    // === NEW: Global Socket & Push Notification Initialization ===
+    useEffect(() => {
+        if (user && user._id) {
+            // 1. Establish Personal Socket Room Connection
+            const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+            const socket = io(socketUrl);
+
+            // Emit the join command based on your backend convention
+            // Note: Admin uses the Employee model, so their role for the room is "employee"
+            const socketRole = user.role === 'admin' ? 'employee' : user.role;
+            socket.emit("joinPersonalRoom", { id: user._id, role: socketRole });
+
+            setGlobalSocket(socket);
+
+            // 2. Register Web Push Notifications
+            let saveSubFn;
+            if (user.role === 'admin') saveSubFn = adminApi.savePushSubscription;
+            else if (user.role === 'employee') saveSubFn = employeeApi.savePushSubscription;
+            else if (user.role === 'user') saveSubFn = userApi.savePushSubscription;
+
+            if (saveSubFn) {
+                // This triggers the permission prompt and saves the token to DB
+                setupPushNotifications(saveSubFn);
+            }
+
+            // Cleanup socket on unmount or user change
+            return () => {
+                socket.disconnect();
+            };
+        } else {
+            setGlobalSocket(null);
+        }
+    }, [user]);
 
     const login = async (role, credentials) => {
         try {
@@ -76,7 +116,7 @@ export const AuthProvider = ({ children }) => {
             const token = data.token;
             const decoded = decodeToken(token);
 
-            // Store user ID from token (field may be employeeId, userId, or id)
+            // Store user ID from token
             const userId = decoded?.employeeId || decoded?.userId || decoded?.id;
 
             localStorage.setItem('token', token);
@@ -89,7 +129,7 @@ export const AuthProvider = ({ children }) => {
                 token,
                 role,
                 name: decoded?.name,
-                _id: userId, // <-- store the ID
+                _id: userId,
             });
 
             return { success: true, data };
@@ -138,6 +178,9 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('userRole');
         localStorage.removeItem('userName');
         setUser(null);
+        if (globalSocket) {
+            globalSocket.disconnect();
+        }
         window.location.href = '/';
     };
 
@@ -149,6 +192,7 @@ export const AuthProvider = ({ children }) => {
             logout,
             loading,
             isAuthenticated: !!user,
+            socket: globalSocket // Exporting socket so Notification Bell can listen to it!
         }}>
             {children}
         </AuthContext.Provider>

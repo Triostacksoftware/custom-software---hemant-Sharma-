@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Bell, LogOut, IndianRupee, Users, Folder, TrendingUp, TrendingDown,
-    Calendar, Sun, CheckSquare, Megaphone, Gavel, Briefcase, ChevronLeft, ChevronRight
+    LogOut, IndianRupee, Users, Folder, TrendingUp, TrendingDown,
+    Calendar, Sun, CheckSquare, Megaphone, Gavel, Briefcase
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { adminApi } from '../../api/adminApi';
+import BellNotification from '../../components/common/BellNotification'; // <-- NEW IMPORT
 import logo from '../../assets/images/logo.png';
 import './Dashboard.css';
 
@@ -17,39 +18,20 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
     const [dashboardData, setDashboardData] = useState(null);
 
-    // Notification Modal States
-    const [notifications, setNotifications] = useState(0); // Unread count
-    const [isNotifOpen, setIsNotifOpen] = useState(false);
-    const [notifList, setNotifList] = useState([]);
-    const [loadingNotifs, setLoadingNotifs] = useState(false);
-    const [viewAllMode, setViewAllMode] = useState(false);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const notifRef = useRef(null);
-
     // Live clock timer
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 60000);
         return () => clearInterval(timer);
     }, []);
 
-    // Fetch Dashboard Stats & Unread Notifications
+    // Fetch Dashboard Stats
     useEffect(() => {
         const fetchDashboard = async () => {
             try {
-                // Fetch unread notifications count
-                adminApi.getUnreadNotifications()
-                    .then(res => {
-                        if (res.data.success) setNotifications(res.data.data.count);
-                    })
-                    .catch(err => console.error("Failed to load notifications", err));
-
                 // Fetch Actual Dashboard Data from Backend
                 const response = await adminApi.getDashboardStats();
                 if (response.data.success) {
                     const data = response.data.data;
-
-                    // Calculate total pending approvals (Members + Employees)
                     const totalPendingApprovals = (data.users?.pending || 0) + (data.employees?.pending || 0);
 
                     setDashboardData({
@@ -69,61 +51,6 @@ const Dashboard = () => {
 
         fetchDashboard();
     }, []);
-
-    // Handle clicks outside the notification modal to close it
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (notifRef.current && !notifRef.current.contains(event.target)) {
-                setIsNotifOpen(false);
-                setViewAllMode(false); // Reset to default view when closed
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const handleNotificationClick = async () => {
-        const newOpenState = !isNotifOpen;
-        setIsNotifOpen(newOpenState);
-
-        // Fetch Recent Unread when opening
-        if (newOpenState) {
-            setViewAllMode(false);
-            setLoadingNotifs(true);
-            try {
-                const response = await adminApi.getNotificationsList(true, 5, 1);
-                if (response.data.success) {
-                    const fetchedNotifs = response.data.data.notifications;
-                    setNotifList(fetchedNotifs);
-
-                    // Backend marks these as read, so decrement our local unread badge count
-                    setNotifications(prev => Math.max(0, prev - fetchedNotifs.length));
-                }
-            } catch (error) {
-                console.error("Failed to fetch unread notifications", error);
-            } finally {
-                setLoadingNotifs(false);
-            }
-        }
-    };
-
-    const fetchAllNotifications = async (page = 1) => {
-        setLoadingNotifs(true);
-        setViewAllMode(true);
-        try {
-            // Fetch all notifications (unreadOnly = false), 10 per page
-            const response = await adminApi.getNotificationsList(false, 10, page);
-            if (response.data.success) {
-                setNotifList(response.data.data.notifications);
-                setCurrentPage(response.data.data.pagination.page);
-                setTotalPages(response.data.data.pagination.totalPages);
-            }
-        } catch (error) {
-            console.error("Failed to fetch all notifications", error);
-        } finally {
-            setLoadingNotifs(false);
-        }
-    };
 
     const formatDateTime = (date) => {
         return date.toLocaleString('en-IN', {
@@ -171,78 +98,8 @@ const Dashboard = () => {
                 </div>
                 <div className="header-right">
 
-                    {/* Notification Wrapper */}
-                    <div className="notification-wrapper" ref={notifRef}>
-                        <button
-                            className="icon-btn notification-btn"
-                            onClick={handleNotificationClick}
-                        >
-                            <Bell size={26} />
-                            {notifications > 0 && <span className="badge">{notifications}</span>}
-                        </button>
-
-                        {isNotifOpen && (
-                            <div className={`notification-modal ${viewAllMode ? 'expanded' : ''}`}>
-                                <div className="notif-header">
-                                    <h4>{viewAllMode ? 'All Notifications' : 'Recent Notifications'}</h4>
-                                    {notifications > 0 && !viewAllMode && <span className="notif-count">{notifications} New</span>}
-                                </div>
-
-                                <div className={`notif-body ${viewAllMode ? 'expanded-body' : ''}`}>
-                                    {loadingNotifs ? (
-                                        <div className="notif-empty">
-                                            <div className="spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }}></div>
-                                        </div>
-                                    ) : notifList.length === 0 ? (
-                                        <div className="notif-empty">
-                                            <Bell size={32} className="empty-bell" />
-                                            <p>{viewAllMode ? 'Inbox is empty' : 'No new messages'}</p>
-                                        </div>
-                                    ) : (
-                                        <ul className="notif-list">
-                                            {notifList.map((notif) => (
-                                                <li key={notif._id} className={`notif-item ${!notif.isRead ? 'unread' : ''}`}>
-                                                    <div className="notif-icon"><Bell size={16} /></div>
-                                                    <div className="notif-content">
-                                                        <p className="notif-title">{notif.title}</p>
-                                                        <p className="notif-desc">{notif.body}</p>
-                                                        <span className="notif-time">
-                                                            {new Date(notif.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                    </div>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-
-                                {/* Dynamic Footer */}
-                                {!viewAllMode ? (
-                                    <div className="notif-footer" onClick={() => fetchAllNotifications(1)}>
-                                        View all notifications
-                                    </div>
-                                ) : (
-                                    <div className="notif-pagination-footer">
-                                        <button
-                                            className="page-btn"
-                                            disabled={currentPage === 1 || loadingNotifs}
-                                            onClick={() => fetchAllNotifications(currentPage - 1)}
-                                        >
-                                            <ChevronLeft size={16} /> Prev
-                                        </button>
-                                        <span className="page-info">Page {currentPage} of {totalPages || 1}</span>
-                                        <button
-                                            className="page-btn"
-                                            disabled={currentPage === totalPages || totalPages === 0 || loadingNotifs}
-                                            onClick={() => fetchAllNotifications(currentPage + 1)}
-                                        >
-                                            Next <ChevronRight size={16} />
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                    {/* === CLEANED UP NOTIFICATION COMPONENT === */}
+                    <BellNotification api={adminApi} />
 
                     <div className="user-profile-section">
                         <span className="welcome-text">Admin: {user?.name || 'Administrator'}</span>

@@ -18,14 +18,14 @@ export const employeeApi = {
     // Transaction history
     getTransactionHistory: (params = {}) => api.get('/employee/transactions/history', { params }),
 
-    // === Notification Endpoints (NEW) ===
+    // === Notification Endpoints ===
     getUnreadNotifications: () => api.get('/employee/notifications/unread-count'),
     getNotificationsList: (unreadOnly = false, limit = 5, page = 1) => {
         let url = `/employee/notifications?page=${page}&limit=${limit}`;
         if (unreadOnly) url += `&unreadOnly=true`;
         return api.get(url);
-    }
-
+    },
+    savePushSubscription: (data) => api.post('/employee/push-subscription', data),
 };
 
 export default employeeApi;

@@ -25,5 +25,14 @@ router.get('/employee/pending_members/', authentication.authenticate, employeeCo
 //endpoint to fetch transaction history
 router.get('/employee/transactions/history/', authentication.authenticate, employeeController.getEmployeeTransactionHistory);
 
+//endpoint to get unread notification count
+router.get('/employee/notifications/unread-count', authentication.authenticate, employeeController.getUnreadNotificationCount);
+
+//endpoint to get unread notifications
+router.get('/employee/notifications', authentication.authenticate, employeeController.getNotifications);
+
+//endpoint to save push subscription object
+router.post('/employee/push-subscription', authentication.authenticate, employeeController.saveEmployeePushSubscription);
+
 
 module.exports = router;

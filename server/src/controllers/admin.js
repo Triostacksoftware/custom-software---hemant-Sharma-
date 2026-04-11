@@ -12,6 +12,12 @@ const Bid = require("../models/bid.js");
 const Ad = require("../models/ads.js");
 const Notification = require("../models/notification.js");
 
+const {
+    notifyMember,
+    notifyGroupMembers,
+    notifyAllEmployees,
+    notifyAdmins
+} = require("../services/notificationService.js");
 
 
 //create login token using jwt
@@ -392,11 +398,7 @@ exports.addMemberToGroup = async (req, res, next) => {
             });
         }
 
-        // ── FIX: Capacity check uses totalMembers - 1 ─────────────────────────
-        //
-        // Admin occupies one slot via adminId (not in members[]).
-        // Regular members fill the remaining totalMembers - 1 slots.
-        // Example: totalMembers = 4 → admin + 3 regular members.
+        // Admin occupies one slot via adminId — regular members fill totalMembers - 1 slots
         if (group.members.length >= group.totalMembers - 1) {
             return res.status(400).json({
                 success: false,
@@ -443,12 +445,26 @@ exports.addMemberToGroup = async (req, res, next) => {
 
         await group.save();
 
+        // ── Notify the added member ───────────────────────────────────────────
+        //
+        // Fire and forget — runs after save so the response is not delayed.
+        // Tells the member they have been added to the group.
+        const io = req.app.get("io");
+        notifyMember(
+            userId,
+            "Added to a Group",
+            `You have been added to the chit group "${group.name}". Monthly contribution: ₹${group.monthlyContribution}.`,
+            "MEMBER_ADDED_TO_GROUP",
+            io,
+            group._id
+        );
+
         return res.status(200).json({
             success: true,
             message: "Member added to group successfully",
             data: {
-                currentMemberCount: group.members.length,           // regular members added so far
-                remainingSlots: group.totalMembers - 1 - group.members.length  // slots left for regular members
+                currentMemberCount: group.members.length,
+                remainingSlots: group.totalMembers - 1 - group.members.length
             }
         });
 
@@ -458,12 +474,11 @@ exports.addMemberToGroup = async (req, res, next) => {
 };
 
 
-//controller to activate a group
+// Controller to activate a group
 exports.activateGroup = async (req, res, next) => {
     try {
         const { groupId } = req.params;
 
-        //validate groupId
         if (!groupId) {
             return res.status(400).json({
                 success: false,
@@ -471,8 +486,9 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        //fetch group
+        // Fetch group
         const group = await Groups.findById(groupId);
+
         if (!group) {
             return res.status(404).json({
                 success: false,
@@ -480,7 +496,7 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        //group must be in DRAFT
+        // Group must be in DRAFT
         if (group.status !== "DRAFT") {
             return res.status(400).json({
                 success: false,
@@ -488,7 +504,7 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        //member count must match
+        // All regular member slots must be filled before activation
         if (group.members.length !== group.totalMembers - 1) {
             return res.status(400).json({
                 success: false,
@@ -496,33 +512,48 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        // === FIX: CREATE MONTH 1 ADMIN ROUND ===
+        // Create month 1 ADMIN_ROUND
         const totalPoolAmount = group.totalMembers * group.monthlyContribution;
 
-        // Create the initial Admin Round document so the collection APIs know members owe money
         await BiddingRound.create({
             groupId: group._id,
-            monthNumber: 1, // Instantly starts at Month 1
-            status: "ADMIN_ROUND", // Flags it so bidding cannot happen
-            totalPoolAmount: totalPoolAmount,
-            payablePerMember: group.monthlyContribution, // Members pay full amount, no dividend
+            monthNumber: 1,
+            status: "ADMIN_ROUND",
+            totalPoolAmount,
+            payablePerMember: group.monthlyContribution, // full amount — no dividend in month 1
             dividendPerMember: 0,
             winningBidAmount: 0,
-            winnerReceivableAmount: totalPoolAmount, // Admin takes the whole pot
+            winnerReceivableAmount: totalPoolAmount,          // admin receives the full pool
+            isAdminRound: true,
+            adminPayoutAmount: totalPoolAmount,
             startedAt: new Date(),
-            endedAt: new Date() // Time doesn't matter for Admin Round, it goes straight to collection
+            endedAt: new Date()
         });
 
-        // Set all members' payment status to PENDING for the new month
+        // Reset all member payment statuses
         group.members.forEach(member => {
             member.currentPaymentStatus = "PENDING";
         });
 
-        //activate group
+        // Activate group
         group.status = "ACTIVE";
         group.startDate = new Date();
 
         await group.save();
+
+        // ── Notify all group members ──────────────────────────────────────────
+        //
+        // Fires after group is saved. Notifies every member that the group
+        // has officially started and month 1 contributions are now open.
+        // Fire and forget — does not delay the response.
+        const io = req.app.get("io");
+        notifyGroupMembers(
+            group._id,
+            "Your Chit Group Has Started! 🎉",
+            `"${group.name}" is now active. Please pay your Month 1 contribution of ₹${group.monthlyContribution}.`,
+            "GROUP_ACTIVATED",
+            io
+        );
 
         return res.status(200).json({
             success: true,
@@ -1303,7 +1334,6 @@ exports.openBidding = async (req, res, next) => {
 
         console.log("bidding constraints", req.body);
 
-        //Input validation
         if (!groupId) {
             return res.status(400).json({
                 success: false,
@@ -1339,7 +1369,6 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        //Group validation
         const group = await Groups.findById(groupId);
 
         if (!group) {
@@ -1363,7 +1392,6 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        // Block month 1 — admin round, no bidding
         if (group.currentMonth === 1) {
             return res.status(400).json({
                 success: false,
@@ -1371,7 +1399,6 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        // Ensure no round is already OPEN for this group
         const openRoundExists = await BiddingRound.findOne({
             groupId,
             status: "OPEN"
@@ -1387,8 +1414,6 @@ exports.openBidding = async (req, res, next) => {
         const now = new Date();
         const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
-        //Find existing PENDING round or create one
-        // Fallback: if no round exists yet, create one directly as OPEN.
         const existingRound = await BiddingRound.findOne({
             groupId,
             monthNumber: group.currentMonth
@@ -1397,7 +1422,6 @@ exports.openBidding = async (req, res, next) => {
         let biddingRound;
 
         if (existingRound) {
-            // Round exists but is not PENDING — cannot reopen
             if (existingRound.status !== "PENDING") {
                 return res.status(400).json({
                     success: false,
@@ -1405,7 +1429,6 @@ exports.openBidding = async (req, res, next) => {
                 });
             }
 
-            // Update PENDING round with limits and open it
             existingRound.status = "OPEN";
             existingRound.minBid = minBid;
             existingRound.maxBid = maxBid;
@@ -1415,7 +1438,6 @@ exports.openBidding = async (req, res, next) => {
             biddingRound = await existingRound.save();
 
         } else {
-            // No round exists yet — create directly as OPEN
             const totalPoolAmount = group.totalMembers * group.monthlyContribution;
 
             biddingRound = await BiddingRound.create({
@@ -1431,7 +1453,7 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        // Emit socket event to the bidding room
+        // Emit socket event to bidding room
         const io = req.app.get("io");
         io.to(biddingRound._id.toString()).emit("biddingOpened", {
             biddingRoundId: biddingRound._id,
@@ -1441,6 +1463,28 @@ exports.openBidding = async (req, res, next) => {
             maxBid: biddingRound.maxBid,
             bidMultiple: biddingRound.bidMultiple
         });
+
+        // ── Notify all group members + all employees ──────────────────────────
+        //
+        // Members need to know bidding is live so they can enter the room.
+        // Employees need to know so they are aware of the ongoing session.
+        const body = `Bidding is now live for "${group.name}" — Month ${group.currentMonth}. Bids close at 8 PM.`;
+
+        notifyGroupMembers(
+            group._id,
+            "Bidding is Live! 🔨",
+            body,
+            "BIDDING_OPEN",
+            io
+        );
+
+        notifyAllEmployees(
+            "Bidding is Live! 🔨",
+            body,
+            "BIDDING_OPEN",
+            io,
+            group._id
+        );
 
         return res.status(200).json({
             success: true,
@@ -1461,7 +1505,7 @@ exports.openBidding = async (req, res, next) => {
 };
 
 
-//controller to close bidding
+// Controller to close bidding
 exports.closeBidding = async (req, res, next) => {
     try {
         const { biddingRoundId } = req.body;
@@ -1489,14 +1533,27 @@ exports.closeBidding = async (req, res, next) => {
             });
         }
 
-        // Fetch all bids sorted in descending order
         const bids = await Bid.find({ biddingRoundId })
             .sort({ bidAmount: -1 })
             .populate("userId", "name");
 
+        const io = req.app.get("io");
+
+        // ── No bids placed ────────────────────────────────────────────────────
         if (bids.length === 0) {
             round.status = "CLOSED";
             await round.save();
+
+            const group = await Groups.findById(round.groupId).select("name _id").lean();
+
+            // Notify admin — no bids, they need to reopen or take action
+            notifyAdmins(
+                "Bidding Closed — No Bids",
+                `No bids were placed for "${group?.name}" Month ${round.monthNumber}. Please reopen bidding.`,
+                "BIDDING_CLOSED",
+                io,
+                round.groupId
+            );
 
             return res.status(200).json({
                 success: true,
@@ -1505,17 +1562,23 @@ exports.closeBidding = async (req, res, next) => {
         }
 
         const highestBidAmount = bids[0].bidAmount;
+        const highestBidders = bids.filter(bid => bid.bidAmount === highestBidAmount);
 
-        // Get all users with highest bid
-        const highestBidders = bids.filter(
-            bid => bid.bidAmount === highestBidAmount
-        );
-
-        //Tie case
+        // ── Tie case ──────────────────────────────────────────────────────────
         if (highestBidders.length > 1) {
-
             round.status = "CLOSED";
             await round.save();
+
+            const group = await Groups.findById(round.groupId).select("name _id").lean();
+
+            // Notify admin — they must resolve the tie
+            notifyAdmins(
+                "Bidding Tie — Action Required ⚠️",
+                `A tie was detected in "${group?.name}" Month ${round.monthNumber}. Please select the winner.`,
+                "BIDDING_TIE",
+                io,
+                round.groupId
+            );
 
             return res.status(200).json({
                 success: true,
@@ -1529,7 +1592,7 @@ exports.closeBidding = async (req, res, next) => {
             });
         }
 
-        //single winner case
+        // ── Single winner ─────────────────────────────────────────────────────
         const winnerBid = highestBidders[0];
 
         const group = await Groups.findById(round.groupId);
@@ -1544,24 +1607,19 @@ exports.closeBidding = async (req, res, next) => {
         const totalMembers = group.totalMembers;
         const totalPool = round.totalPoolAmount;
         const winningBidAmount = winnerBid.bidAmount;
-
-        // Calculate contribution and payout financials
         const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
         const payablePerMember = group.monthlyContribution - dividendPerMember;
-        const winnerReceivableAmount = totalPool - winningBidAmount;
+        const winnerReceivable = totalPool - winningBidAmount;
 
-        //update round
         round.status = "PAYMENT_OPEN";
         round.winnerUserId = winnerBid.userId._id;
         round.winningBidAmount = winningBidAmount;
         round.dividendPerMember = dividendPerMember;
         round.payablePerMember = payablePerMember;
-        round.winnerReceivableAmount = winnerReceivableAmount;
-        // round.finalizedAt = new Date();
+        round.winnerReceivableAmount = winnerReceivable;
 
         await round.save();
 
-        // update winner in group.members
         await Groups.updateOne(
             { _id: group._id, "members.userId": winnerBid.userId._id },
             {
@@ -1573,30 +1631,58 @@ exports.closeBidding = async (req, res, next) => {
             }
         );
 
-        //Set all other members to PENDING
         await Groups.updateOne(
             { _id: group._id },
-            {
-                $set: {
-                    "members.$[elem].currentPaymentStatus": "PENDING"
-                }
-            },
-            {
-                arrayFilters: [{ "elem.userId": { $ne: winnerBid.userId._id } }]
-            }
+            { $set: { "members.$[elem].currentPaymentStatus": "PENDING" } },
+            { arrayFilters: [{ "elem.userId": { $ne: winnerBid.userId._id } }] }
         );
 
-        //emit final results
-        const io = req.app.get("io");
-
+        // Emit socket result to bidding room
         io.to(biddingRoundId.toString()).emit("biddingClosed", {
             winnerUserId: winnerBid.userId._id,
             winnerName: winnerBid.userId.name,
             winningBidAmount,
-            winnerReceivableAmount,
+            winnerReceivableAmount: winnerReceivable,
             dividendPerMember,
             payablePerMember,
         });
+
+        // ── Notify members — different messages for winner vs non-winners ─────
+        //
+        // Winner gets a special message with their payout amount.
+        // Non-winners get the contribution amount they now owe.
+        // notifyGroupMembers sends the same message to everyone — so we send
+        // a general message to all, then override with a specific one to winner.
+
+        // General message to all group members
+        notifyGroupMembers(
+            group._id,
+            "Bidding Result — Payments Now Open 🎉",
+            `Month ${round.monthNumber} bidding is complete for "${group.name}". Please pay your contribution of ₹${payablePerMember}.`,
+            "BIDDING_CLOSED",
+            io
+        );
+
+        // Override for winner — separate targeted notification
+        notifyGroupMembers.name; // no-op, just for readability separation
+        const { notifyMember } = require("../services/notificationService");
+        notifyMember(
+            winnerBid.userId._id,
+            "Congratulations! You Won! 🏆",
+            `You won the Month ${round.monthNumber} bid in "${group.name}"! You will receive ₹${winnerReceivable}.`,
+            "BIDDING_CLOSED",
+            io,
+            group._id
+        );
+
+        // Notify all employees — they need to start collections
+        notifyAllEmployees(
+            "Bidding Closed — Collections Open",
+            `Month ${round.monthNumber} bidding is complete for "${group.name}". Collections and payout can now begin.`,
+            "BIDDING_CLOSED",
+            io,
+            group._id
+        );
 
         return res.status(200).json({
             success: true,
@@ -1605,7 +1691,7 @@ exports.closeBidding = async (req, res, next) => {
                 winnerUserId: winnerBid.userId._id,
                 winnerName: winnerBid.userId.name,
                 winningBidAmount,
-                winnerReceivableAmount,
+                winnerReceivableAmount: winnerReceivable,
                 dividendPerMember,
                 payablePerMember
             }
@@ -1617,7 +1703,7 @@ exports.closeBidding = async (req, res, next) => {
 };
 
 
-//controller to resolve tie (admin selects winner)
+// Controller to resolve tie (admin selects winner)
 exports.resolveTie = async (req, res, next) => {
     try {
         const { biddingRoundId, winnerUserId } = req.body;
@@ -1638,7 +1724,6 @@ exports.resolveTie = async (req, res, next) => {
             });
         }
 
-        // Ensure round is CLOSED but winner not yet decided
         if (round.status !== "CLOSED" || round.winnerUserId) {
             return res.status(400).json({
                 success: false,
@@ -1646,7 +1731,6 @@ exports.resolveTie = async (req, res, next) => {
             });
         }
 
-        // Fetch all bids sorted descending
         const bids = await Bid.find({ biddingRoundId })
             .sort({ bidAmount: -1 })
             .populate("userId", "name");
@@ -1659,11 +1743,7 @@ exports.resolveTie = async (req, res, next) => {
         }
 
         const highestBidAmount = bids[0].bidAmount;
-
-        // Filter highest bidders
-        const highestBidders = bids.filter(
-            bid => bid.bidAmount === highestBidAmount
-        );
+        const highestBidders = bids.filter(bid => bid.bidAmount === highestBidAmount);
 
         if (highestBidders.length <= 1) {
             return res.status(400).json({
@@ -1672,7 +1752,6 @@ exports.resolveTie = async (req, res, next) => {
             });
         }
 
-        // Check selected winner is among tied users
         const selectedWinner = highestBidders.find(
             bid => bid.userId._id.toString() === winnerUserId
         );
@@ -1684,7 +1763,6 @@ exports.resolveTie = async (req, res, next) => {
             });
         }
 
-        // Fetch group
         const group = await Groups.findById(round.groupId);
 
         if (!group) {
@@ -1697,24 +1775,19 @@ exports.resolveTie = async (req, res, next) => {
         const totalMembers = group.totalMembers;
         const totalPool = round.totalPoolAmount;
         const winningBidAmount = highestBidAmount;
-
-        //Financial calculations
-        const winnerReceivableAmount = totalPool - winningBidAmount;
+        const winnerReceivable = totalPool - winningBidAmount;
         const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
         const payablePerMember = group.monthlyContribution - dividendPerMember;
 
-        //Update round
         round.status = "PAYMENT_OPEN";
         round.winnerUserId = selectedWinner.userId._id;
         round.winningBidAmount = winningBidAmount;
-        round.winnerReceivableAmount = winnerReceivableAmount;
+        round.winnerReceivableAmount = winnerReceivable;
         round.dividendPerMember = dividendPerMember;
         round.payablePerMember = payablePerMember;
-        // round.finalizedAt = new Date();
 
         await round.save();
 
-        //Update winner in group.members
         await Groups.updateOne(
             { _id: group._id, "members.userId": selectedWinner.userId._id },
             {
@@ -1726,30 +1799,53 @@ exports.resolveTie = async (req, res, next) => {
             }
         );
 
-        //Set others to PENDING
         await Groups.updateOne(
             { _id: group._id },
-            {
-                $set: {
-                    "members.$[elem].currentPaymentStatus": "PENDING"
-                }
-            },
-            {
-                arrayFilters: [{ "elem.userId": { $ne: selectedWinner.userId._id } }]
-            }
+            { $set: { "members.$[elem].currentPaymentStatus": "PENDING" } },
+            { arrayFilters: [{ "elem.userId": { $ne: selectedWinner.userId._id } }] }
         );
 
-        // Emit final result
+        // Emit result to bidding room
         const io = req.app.get("io");
-
         io.to(biddingRoundId.toString()).emit("biddingClosed", {
             winnerUserId: selectedWinner.userId._id,
             winnerName: selectedWinner.userId.name,
             winningBidAmount,
-            winnerReceivableAmount,
+            winnerReceivableAmount: winnerReceivable,
             dividendPerMember,
             payablePerMember
         });
+
+        // ── Notify all group members + winner specifically + employees ─────────
+        const { notifyMember } = require("../services/notificationService");
+
+        // General message to all members
+        notifyGroupMembers(
+            group._id,
+            "Tie Resolved — Payments Now Open",
+            `The tie in Month ${round.monthNumber} for "${group.name}" has been resolved. Please pay your contribution of ₹${payablePerMember}.`,
+            "BIDDING_CLOSED",
+            io
+        );
+
+        // Specific message to winner
+        notifyMember(
+            selectedWinner.userId._id,
+            "Congratulations! You Won! 🏆",
+            `You were selected as the winner for Month ${round.monthNumber} in "${group.name}"! You will receive ₹${winnerReceivable}.`,
+            "BIDDING_CLOSED",
+            io,
+            group._id
+        );
+
+        // Notify all employees
+        notifyAllEmployees(
+            "Tie Resolved — Collections Open",
+            `The tie in "${group.name}" Month ${round.monthNumber} is resolved. Collections and payout can now begin.`,
+            "BIDDING_CLOSED",
+            io,
+            group._id
+        );
 
         return res.status(200).json({
             success: true,
@@ -1758,7 +1854,7 @@ exports.resolveTie = async (req, res, next) => {
                 winnerUserId: selectedWinner.userId._id,
                 winnerName: selectedWinner.userId.name,
                 winningBidAmount,
-                winnerReceivableAmount,
+                winnerReceivableAmount: winnerReceivable,
                 dividendPerMember,
                 payablePerMember
             }
@@ -2801,6 +2897,118 @@ exports.deleteAd = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Ad deleted successfully"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// Controller to get unread notification count
+exports.getUnreadNotificationCount = async (req, res, next) => {
+    try {
+        const adminId = req.employee._id;
+
+        const count = await Notification.countDocuments({
+            recipientId: adminId,
+            recipientModel: "Employee",
+            isRead: false
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: { count }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// Controller to get notifications
+exports.getNotifications = async (req, res, next) => {
+    try {
+        const adminId = req.employee._id;
+
+        const unreadOnly = req.query.unreadOnly === "true";
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const skip = unreadOnly ? 0 : (page - 1) * limit;
+
+        const filter = {
+            recipientId: adminId,
+            recipientModel: "Employee"
+        };
+
+        if (unreadOnly) {
+            filter.isRead = false;
+        }
+
+        const [notifications, totalCount] = await Promise.all([
+            Notification.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select("title body type groupId isRead status scheduledAt createdAt")
+                .lean(),
+            Notification.countDocuments(filter)
+        ]);
+
+        if (unreadOnly && notifications.length > 0) {
+            const unreadIds = notifications
+                .filter(n => !n.isRead)
+                .map(n => n._id);
+
+            if (unreadIds.length > 0) {
+                await Notification.updateMany(
+                    { _id: { $in: unreadIds } },
+                    { $set: { isRead: true } }
+                );
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                notifications,
+                pagination: {
+                    total: totalCount,
+                    page: unreadOnly ? 1 : page,
+                    limit,
+                    totalPages: Math.ceil(totalCount / limit),
+                    hasNextPage: unreadOnly ? false : page * limit < totalCount
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// ── Admin: POST /admin/push-subscription ─────────────────────────────────────
+exports.saveAdminPushSubscription = async (req, res, next) => {
+    try {
+        const { subscription } = req.body;
+        const adminId = req.employee._id;
+
+        if (!subscription || !subscription.endpoint) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid push subscription object is required"
+            });
+        }
+
+        await Employee.findByIdAndUpdate(adminId, {
+            $set: { pushSubscription: subscription }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Push subscription saved"
         });
 
     } catch (error) {

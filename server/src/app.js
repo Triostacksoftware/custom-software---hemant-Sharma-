@@ -18,14 +18,13 @@ const errorHandler = require("./middleware/error_handler.js");
 const userRoutes = require("./routes/user.js");
 const employeeRoutes = require("./routes/employee.js");
 const adminRoutes = require("./routes/admin.js");
-const { Socket } = require("dgram");
 
 const app = express();
 
-//creating http server
+// Creating http server
 const server = http.createServer(app);
 
-//attaching socket.io
+// Attaching socket.io
 const io = new Server(server, {
     cors: {
         origin: "*",
@@ -33,7 +32,7 @@ const io = new Server(server, {
     }
 });
 
-//make io globally accessible
+// Make io globally accessible
 app.set("io", io);
 
 app.use(cors());
@@ -45,14 +44,34 @@ app.use(adminRoutes);
 
 app.use(errorHandler);
 
-//socket connection logic
+// ── Socket connection logic ───────────────────────────────────────────────────
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    //join bidding room
+    // Join bidding room — for live bid updates
     socket.on("joinBiddingRoom", ({ biddingRoundId }) => {
         socket.join(biddingRoundId.toString());
-        console.log(`Socket ${socket.id} joined room ${biddingRoundId}`);
+        console.log(`Socket ${socket.id} joined bidding room ${biddingRoundId}`);
+    });
+
+    // ── NEW: Join personal notification room ──────────────────────────────────
+    //
+    // Each user/employee joins their own room on login so the notification
+    // service can emit real-time newNotification events directly to them.
+    //
+    // Room naming convention:
+    //   Members   → "user_{userId}"
+    //   Employees → "employee_{employeeId}"
+    //   Admins    → "employee_{adminId}"  (admin is in Employee model)
+    //
+    // Frontend calls this immediately after login:
+    //   socket.emit("joinPersonalRoom", { id: userId, role: "user" })
+    //   socket.emit("joinPersonalRoom", { id: employeeId, role: "employee" })
+    socket.on("joinPersonalRoom", ({ id, role }) => {
+        if (!id || !role) return;
+        const room = `${role}_${id}`;
+        socket.join(room);
+        console.log(`Socket ${socket.id} joined personal room ${room}`);
     });
 
     socket.on("disconnect", () => {
@@ -60,13 +79,19 @@ io.on("connection", (socket) => {
     });
 });
 
+
+// ── Database connection + server start ───────────────────────────────────────
 mongoose.connect(process.env.DATABASE_CONNECTION_STRING)
     .then(() => {
         console.log("Database connection established");
         server.listen(process.env.PORT, () => {
             console.log(`Server running on port ${process.env.PORT}`);
-        })
+
+            // TODO: initialize cron jobs here after cronJobs.js is built
+            // const { initCronJobs } = require("./cronJobs");
+            // initCronJobs(io);
+        });
     })
     .catch((error) => {
         console.log("Database connection error", error);
-    })
+    });

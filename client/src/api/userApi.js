@@ -26,8 +26,10 @@ export const userApi = {
     getTransactionHistory: (params = {}) => api.get('/user/transactions', { params }),
     getPendingDues: () => api.get('/user/requests/pending-dues'),
 
-    // We will mock this one for now, but you can wire it up later
     sendNotificationRequest: (data) => api.post('/user/requests/send-notification', data),
+
+    // === Push Notifications ===
+    savePushSubscription: (data) => api.post('/user/push-subscription', data),
 };
 
 export default userApi;

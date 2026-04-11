@@ -7,6 +7,7 @@ const Groups = require("../models/group.js");
 const Transaction = require("../models/transaction.js");
 const User = require("../models/user.js");
 const BiddingRound = require("../models/biddingRound.js");
+const Notification = require("../models/notification.js");
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
@@ -840,5 +841,118 @@ exports.getEmployeeTransactionHistory = async (req, res, next) => {
     } catch (error) {
         next(error);
 
+    }
+};
+
+
+// Controller to get unread notification count
+exports.getUnreadNotificationCount = async (req, res, next) => {
+    try {
+        const employeeId = req.employee._id;
+
+        const count = await Notification.countDocuments({
+            recipientId: employeeId,
+            recipientModel: "Employee",
+            isRead: false
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: { count }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// Controller to get notifications
+exports.getNotifications = async (req, res, next) => {
+    try {
+        const employeeId = req.employee._id;
+
+        const unreadOnly = req.query.unreadOnly === "true";
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const skip = unreadOnly ? 0 : (page - 1) * limit;
+
+        const filter = {
+            recipientId: employeeId,
+            recipientModel: "Employee"
+        };
+
+        if (unreadOnly) {
+            filter.isRead = false;
+        }
+
+        const [notifications, totalCount] = await Promise.all([
+            Notification.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .select("title body type groupId isRead status scheduledAt createdAt")
+                .lean(),
+            Notification.countDocuments(filter)
+        ]);
+
+        if (unreadOnly && notifications.length > 0) {
+            const unreadIds = notifications
+                .filter(n => !n.isRead)
+                .map(n => n._id);
+
+            if (unreadIds.length > 0) {
+                await Notification.updateMany(
+                    { _id: { $in: unreadIds } },
+                    { $set: { isRead: true } }
+                );
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                notifications,
+                pagination: {
+                    total: totalCount,
+                    page: unreadOnly ? 1 : page,
+                    limit,
+                    totalPages: Math.ceil(totalCount / limit),
+                    hasNextPage: unreadOnly ? false : page * limit < totalCount
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+
+// ── Employee: POST /employee/push-subscription ────────────────────────────────
+exports.saveEmployeePushSubscription = async (req, res, next) => {
+    try {
+        const { subscription } = req.body;
+        const employeeId = req.employee._id;
+
+        if (!subscription || !subscription.endpoint) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid push subscription object is required"
+            });
+        }
+
+        await Employee.findByIdAndUpdate(employeeId, {
+            $set: { pushSubscription: subscription }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Push subscription saved"
+        });
+
+    } catch (error) {
+        next(error);
     }
 };
