@@ -11,6 +11,13 @@ const Employee = require("../models/employee.js");
 const Notification = require("../models/notification.js");
 const Ad = require("../models/ads.js");
 
+const {
+    notifyMember,
+    notifyEmployee,
+    notifyGroupMembers,
+    notifyAdmins
+} = require("../services/notificationService.js");
+
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
 
@@ -414,7 +421,6 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        // Fetch the transaction
         const transaction = await Transaction.findById(transactionId);
 
         if (!transaction) {
@@ -424,7 +430,6 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        // Must belong to this member
         if (transaction.userId.toString() !== userId.toString()) {
             return res.status(403).json({
                 success: false,
@@ -432,7 +437,6 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        // Must be PENDING
         if (transaction.status !== "PENDING") {
             return res.status(400).json({
                 success: false,
@@ -440,7 +444,6 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
-        // Verify the round is still in a valid payment phase
         const round = await BiddingRound.findById(transaction.biddingRoundId);
 
         if (!round || !["PAYMENT_OPEN", "ADMIN_ROUND"].includes(round.status)) {
@@ -450,24 +453,49 @@ exports.confirmTransaction = async (req, res, next) => {
             });
         }
 
+        // Fetch group name for notification messages
+        const group = await Groups.findById(transaction.groupId)
+            .select("name")
+            .lean();
+
         // Mark transaction as COMPLETED
         transaction.status = "COMPLETED";
         await transaction.save();
 
-        // TODO: emit socket event to employee notifying member confirmed
-        // to be implemented in notifications phase
+        const io = req.app.get("io");
+
+        // ── Notify the employee who initiated the transaction ─────────────────
+        //
+        // Employee gets confirmation that the member has acknowledged the payment.
+        // This closes the loop for the employee without them needing to follow up.
+        const transactionLabel = transaction.type === "CONTRIBUTION"
+            ? `contribution of ₹${transaction.amount}`
+            : `payout of ₹${transaction.amount}`;
+
+        notifyEmployee(
+            transaction.handledBy,
+            "Member Confirmed Payment ✅",
+            `Member has confirmed the ${transactionLabel} for "${group?.name}" Month ${transaction.monthNumber}.`,
+            "PAYMENT_CONFIRMED",
+            io,
+            transaction.groupId
+        );
+
+        // Also emit a dedicated socket event to the employee's personal room
+        // so they see the confirmation instantly without refreshing
+        io.to(`employee_${transaction.handledBy}`).emit("transactionConfirmed", {
+            transactionId: transaction._id,
+            amount: transaction.amount,
+            type: transaction.type,
+            groupName: group?.name,
+            monthNumber: transaction.monthNumber
+        });
 
         // ── Auto-finalize check — ADMIN_ROUND (month 1) only ─────────────────
-        //
-        // After every ADMIN_ROUND confirmation, check if ALL members have
-        // fully paid their contribution. If yes, auto-finalize immediately.
-        //
-        // Month 2+ finalization is manual via the admin finalizeBidding controller
-        // because it involves winner payout verification and admin review.
         let autoFinalized = false;
 
         if (round.status === "ADMIN_ROUND") {
-            autoFinalized = await checkAndAutoFinalizeAdminRound(round);
+            autoFinalized = await checkAndAutoFinalizeAdminRound(round, io);
         }
 
         return res.status(200).json({
@@ -492,23 +520,16 @@ exports.confirmTransaction = async (req, res, next) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: checkAndAutoFinalizeAdminRound
-//
-// Called after every COMPLETED contribution in an ADMIN_ROUND.
-// Checks if every non-admin member has fully paid payablePerMember.
-// If all paid → finalizes the round, increments month, creates month 2 round.
-// Returns true if finalization happened, false otherwise.
+// io is now passed in so notifications can fire on auto-finalize
 // ─────────────────────────────────────────────────────────────────────────────
-async function checkAndAutoFinalizeAdminRound(round) {
+async function checkAndAutoFinalizeAdminRound(round, io) {
     try {
         const group = await Groups.findById(round.groupId).lean();
         if (!group) return false;
 
-        // members[] contains only regular User members (not admin).
-        // All of them must pay payablePerMember in month 1.
         const activeMembers = group.members.filter(m => m.status === "ACTIVE");
         const requiredPerMember = round.payablePerMember;
 
-        // Aggregate COMPLETED contributions for this round
         const completedAgg = await Transaction.aggregate([
             {
                 $match: {
@@ -525,50 +546,47 @@ async function checkAndAutoFinalizeAdminRound(round) {
             }
         ]);
 
-        // Build map: userId -> totalPaid
         const paidMap = new Map(
             completedAgg.map(e => [e._id.toString(), e.totalPaid])
         );
 
-        // Check every active member has paid in full
         const allPaid = activeMembers.every(member => {
-            const memberId = member.userId.toString();
-            const totalPaid = paidMap.get(memberId) || 0;
+            const totalPaid = paidMap.get(member.userId.toString()) || 0;
             return totalPaid >= requiredPerMember;
         });
 
         if (!allPaid) return false;
 
-        // ── All paid — finalize ───────────────────────────────────────────────
+        // All paid — finalize
         const now = new Date();
 
-        // 1. Finalize the ADMIN_ROUND
         await BiddingRound.findByIdAndUpdate(round._id, {
-            $set: {
-                status: "FINALIZED",
-                finalizedAt: now
-            }
+            $set: { status: "FINALIZED", finalizedAt: now }
         });
 
-        // 2. Move group to month 2 and reset payment statuses
         const groupDoc = await Groups.findById(round.groupId);
         groupDoc.currentMonth += 1;
-        groupDoc.members.forEach(m => {
-            m.currentPaymentStatus = "PENDING";
-        });
+        groupDoc.members.forEach(m => { m.currentPaymentStatus = "PENDING"; });
 
-        // Mark group COMPLETED if full cycle is done
         if (groupDoc.currentMonth > groupDoc.totalMonths) {
             groupDoc.status = "COMPLETED";
             await groupDoc.save();
-            return true; // no next round needed
+
+            // Notify all members — group cycle is complete
+            notifyGroupMembers(
+                group._id,
+                "Chit Group Completed 🎊",
+                `"${group.name}" has completed its full cycle. Thank you for participating!`,
+                "GROUP_FINALIZED",
+                io
+            );
+
+            return true;
         }
 
         await groupDoc.save();
 
-        // 3. Create month 2 BiddingRound with PENDING status
-        //    scheduledBiddingDate = 30 days from now
-        //    Admin will set minBid, maxBid, bidMultiple when opening bidding
+        // Create month 2 BiddingRound
         const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         const totalPoolAmount = groupDoc.totalMembers * groupDoc.monthlyContribution;
 
@@ -579,21 +597,36 @@ async function checkAndAutoFinalizeAdminRound(round) {
             totalPoolAmount,
             isAdminRound: false,
             scheduledBiddingDate,
-            // Admin sets these when opening bidding
             minBid: 0,
             maxBid: 0,
             bidMultiple: 1
         });
 
-        // TODO: notify admin and all members that month 1 is complete
-        // and bidding is scheduled for scheduledBiddingDate
-        // to be implemented in notifications phase
+        // ── Notify all members — month 1 complete, bidding coming in 30 days ──
+        const biddingDate = scheduledBiddingDate.toLocaleDateString("en-IN", {
+            day: "2-digit", month: "short", year: "numeric"
+        });
+
+        notifyGroupMembers(
+            group._id,
+            "Month 1 Complete! Bidding Coming Soon 🗓️",
+            `All contributions received for "${group.name}". Bidding for Month 2 is scheduled around ${biddingDate}.`,
+            "GROUP_FINALIZED",
+            io
+        );
+
+        // ── Notify admin — month 1 is done, next bidding needs to be set up ───
+        notifyAdmins(
+            "Month 1 Complete — Set Up Bidding",
+            `All Month 1 contributions collected for "${group.name}". Bidding for Month 2 is scheduled around ${biddingDate}. Please set bid limits when ready.`,
+            "GROUP_FINALIZED",
+            io,
+            group._id
+        );
 
         return true;
 
     } catch (err) {
-        // Auto-finalize failure should not crash the confirmation response.
-        // The transaction is already COMPLETED — log the error and return false.
         console.error("Auto-finalize error:", err);
         return false;
     }

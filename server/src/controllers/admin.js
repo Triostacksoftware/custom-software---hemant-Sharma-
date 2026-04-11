@@ -1878,7 +1878,6 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        // Fetch and validate bidding round
         const round = await BiddingRound.findById(biddingRoundId);
 
         if (!round) {
@@ -1888,8 +1887,6 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        // Only PAYMENT_OPEN rounds can be manually finalized.
-        // ADMIN_ROUND finalizes automatically via confirmTransaction.
         if (round.status !== "PAYMENT_OPEN") {
             return res.status(400).json({
                 success: false,
@@ -1899,7 +1896,6 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        // Fetch group with member details
         const group = await Groups.findById(round.groupId)
             .populate("members.userId", "name phoneNumber")
             .lean();
@@ -1915,7 +1911,6 @@ exports.finalizeBidding = async (req, res, next) => {
         const payablePerMember = round.payablePerMember;
         const winnerReceivable = round.winnerReceivableAmount;
 
-        // Aggregate COMPLETED amounts per member for this round
         const completedAgg = await Transaction.aggregate([
             {
                 $match: {
@@ -1931,7 +1926,6 @@ exports.finalizeBidding = async (req, res, next) => {
             }
         ]);
 
-        // Build lookup maps
         const completedContributionMap = new Map();
         let completedPayoutTotal = 0;
 
@@ -1942,7 +1936,6 @@ exports.finalizeBidding = async (req, res, next) => {
             if (type === "WINNER_PAYOUT") completedPayoutTotal = entry.totalCompleted;
         });
 
-        // Check each non-winning member's contribution
         const activeMembers = group.members.filter(m => m.status === "ACTIVE");
         const pendingMembers = [];
 
@@ -1965,7 +1958,6 @@ exports.finalizeBidding = async (req, res, next) => {
             }
         });
 
-        // Check winner's payout
         const winnerRemainingPayout = winnerReceivable - completedPayoutTotal;
 
         if (winnerRemainingPayout > 0) {
@@ -1984,8 +1976,28 @@ exports.finalizeBidding = async (req, res, next) => {
             }
         }
 
-        // Block finalization if anyone is pending
+        const io = req.app.get("io");
+
+        // ── Block finalization — notify admin with details of who is pending ───
+        //
+        // Admin gets a FINALIZE_BLOCKED notification listing pending counts
+        // so they know what to chase before trying again.
         if (pendingMembers.length > 0) {
+            const contributionPending = pendingMembers.filter(m => m.type === "CONTRIBUTION").length;
+            const payoutPending = pendingMembers.filter(m => m.type === "WINNER_PAYOUT").length;
+
+            const parts = [];
+            if (contributionPending > 0) parts.push(`${contributionPending} member(s) have not fully paid their contribution`);
+            if (payoutPending > 0) parts.push(`winner payout is incomplete`);
+
+            notifyAdmins(
+                "Cannot Finalize — Payments Incomplete 🚫",
+                `"${group.name}" Month ${round.monthNumber} cannot be finalized: ${parts.join(" and ")}.`,
+                "FINALIZE_BLOCKED",
+                io,
+                group._id
+            );
+
             return res.status(400).json({
                 success: false,
                 message: "Cannot finalize — some payments are incomplete",
@@ -2001,17 +2013,25 @@ exports.finalizeBidding = async (req, res, next) => {
         roundDoc.finalizedAt = now;
         await roundDoc.save();
 
-        // Move group to next month and reset payment statuses
         const groupDoc = await Groups.findById(round.groupId);
         groupDoc.currentMonth += 1;
         groupDoc.members.forEach(member => {
             member.currentPaymentStatus = "PENDING";
         });
 
-        // Mark group COMPLETED if full cycle is done
+        // ── Group cycle complete ───────────────────────────────────────────────
         if (groupDoc.currentMonth > groupDoc.totalMonths) {
             groupDoc.status = "COMPLETED";
             await groupDoc.save();
+
+            // Notify all members — the full chit cycle is done
+            notifyGroupMembers(
+                group._id,
+                "Chit Group Completed 🎊",
+                `"${group.name}" has successfully completed its full cycle of ${group.totalMonths} months. Thank you for participating!`,
+                "GROUP_FINALIZED",
+                io
+            );
 
             return res.status(200).json({
                 success: true,
@@ -2027,10 +2047,6 @@ exports.finalizeBidding = async (req, res, next) => {
         await groupDoc.save();
 
         // ── Create next month's BiddingRound ──────────────────────────────────
-        //
-        // Created with status PENDING — admin sets bid limits and opens it
-        // when ready on the scheduled bidding day.
-        // scheduledBiddingDate = 30 days from now so cron jobs can send reminders.
         const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         const totalPoolAmount = groupDoc.totalMembers * groupDoc.monthlyContribution;
 
@@ -2041,15 +2057,32 @@ exports.finalizeBidding = async (req, res, next) => {
             totalPoolAmount,
             isAdminRound: false,
             scheduledBiddingDate,
-            // Admin sets these when opening bidding
             minBid: 0,
             maxBid: 0,
             bidMultiple: 1
         });
 
-        // TODO: notify admin — next bidding scheduled for scheduledBiddingDate
-        // TODO: notify all group members — month complete, next bidding scheduled
-        // to be implemented in notifications phase
+        // ── Notify all members — month complete, next bidding scheduled ────────
+        const biddingDate = scheduledBiddingDate.toLocaleDateString("en-IN", {
+            day: "2-digit", month: "short", year: "numeric"
+        });
+
+        notifyGroupMembers(
+            group._id,
+            `Month ${round.monthNumber} Complete! 🎉`,
+            `All payments for "${group.name}" Month ${round.monthNumber} are done. Bidding for Month ${groupDoc.currentMonth} is scheduled around ${biddingDate}.`,
+            "GROUP_FINALIZED",
+            io
+        );
+
+        // ── Notify admin — next bidding needs to be set up ────────────────────
+        notifyAdmins(
+            `Month ${round.monthNumber} Finalized — Set Up Next Bidding`,
+            `"${group.name}" Month ${round.monthNumber} is finalized. Bidding for Month ${groupDoc.currentMonth} is scheduled around ${biddingDate}. Please set bid limits when ready.`,
+            "GROUP_FINALIZED",
+            io,
+            group._id
+        );
 
         return res.status(200).json({
             success: true,

@@ -9,6 +9,13 @@ const User = require("../models/user.js");
 const BiddingRound = require("../models/biddingRound.js");
 const Notification = require("../models/notification.js");
 
+const {
+    notifyMember,
+    notifyEmployee,
+    notifyGroupMembers,
+    notifyAdmins
+} = require("../services/notificationService.js");
+
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
 //controller function to register a new user
@@ -104,7 +111,6 @@ exports.logTransaction = async (req, res, next) => {
 
         const employeeId = req.employee._id;
 
-        // ── Basic validation ──────────────────────────────────────────────────
         if (!groupId || !userId || !monthNumber || !amount || !paymentMode || !type) {
             return res.status(400).json({
                 success: false,
@@ -133,7 +139,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        // ── Validate group ────────────────────────────────────────────────────
         const group = await Groups.findById(groupId);
 
         if (!group) {
@@ -157,7 +162,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        // ── Validate user ─────────────────────────────────────────────────────
         const user = await User.findById(userId);
 
         if (!user) {
@@ -167,9 +171,7 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        const member = group.members.find(
-            m => m.userId.toString() === userId
-        );
+        const member = group.members.find(m => m.userId.toString() === userId);
 
         if (!member) {
             return res.status(403).json({
@@ -178,10 +180,6 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        // ── Validate bidding round ────────────────────────────────────────────
-        //
-        // Accept both PAYMENT_OPEN (normal months) and ADMIN_ROUND (month 1).
-        // Both statuses have pending payments to collect.
         const round = await BiddingRound.findOne({ groupId, monthNumber });
 
         if (!round) {
@@ -198,10 +196,7 @@ exports.logTransaction = async (req, res, next) => {
             });
         }
 
-        // ── Type-specific validations ─────────────────────────────────────────
-
         if (type === "CONTRIBUTION") {
-            // Winner does not pay contribution
             if (round.winnerUserId && round.winnerUserId.toString() === userId) {
                 return res.status(400).json({
                     success: false,
@@ -209,10 +204,6 @@ exports.logTransaction = async (req, res, next) => {
                 });
             }
 
-            // Remaining balance check — count COMPLETED + PENDING transactions
-            // to prevent double-initiating beyond the payable amount.
-            // PENDING is included so employee can't initiate ₹10000 twice
-            // for a member who already has ₹10000 PENDING confirmation.
             const existingTxAgg = await Transaction.aggregate([
                 {
                     $match: {
@@ -269,10 +260,7 @@ exports.logTransaction = async (req, res, next) => {
             }
         }
 
-        // ── Create transaction as PENDING ─────────────────────────────────────
-        //
-        // Status is PENDING — not COMPLETED yet.
-        // Member must confirm this in their dashboard to complete it.
+        // Create transaction as PENDING
         const transaction = await Transaction.create({
             groupId,
             userId,
@@ -287,20 +275,37 @@ exports.logTransaction = async (req, res, next) => {
             status: "PENDING"
         });
 
-        // TODO: emit socket event to member's personal room so the confirmation
-        // request appears in their dashboard in real time.
-        // to be implemented in the notifications phase:
+        // ── Notify the member — transaction request requires their confirmation ─
         //
-        // const io = req.app.get("io");
-        // io.to(`user_${userId}`).emit("newTransactionRequest", {
-        //     transactionId: transaction._id,
-        //     amount,
-        //     type,
-        //     groupName: group.name,
-        //     monthNumber,
-        //     paymentMode,
-        //     employeeName: req.employee.name
-        // });
+        // Member sees this in their dashboard as a pending confirmation card.
+        // The notification tells them who is logging what amount for which group.
+        // Socket event also fires so it appears in real time without a refresh.
+        const io = req.app.get("io");
+
+        const transactionLabel = type === "CONTRIBUTION"
+            ? `contribution of ₹${amount}`
+            : `payout of ₹${amount}`;
+
+        notifyMember(
+            userId,
+            "Payment Confirmation Required",
+            `${req.employee.name} has logged a ${transactionLabel} for "${group.name}" Month ${monthNumber}. Please confirm.`,
+            "PAYMENT_COLLECTION_REQUEST",
+            io,
+            groupId
+        );
+
+        // Also emit a dedicated socket event to the member's personal room
+        // so the confirmation card appears instantly in their dashboard
+        io.to(`user_${userId}`).emit("newTransactionRequest", {
+            transactionId: transaction._id,
+            amount,
+            type,
+            groupName: group.name,
+            monthNumber,
+            paymentMode,
+            employeeName: req.employee.name
+        });
 
         return res.status(201).json({
             success: true,
