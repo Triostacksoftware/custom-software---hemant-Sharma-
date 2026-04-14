@@ -26,7 +26,8 @@ export const userApi = {
     getTransactionHistory: (params = {}) => api.get('/user/transactions', { params }),
     getPendingDues: () => api.get('/user/requests/pending-dues'),
 
-    sendNotificationRequest: (data) => api.post('/user/requests/send-notification', data),
+    // === NEW: Raise Request Endpoint ===
+    raisePaymentRequest: (data) => api.post('/user/requests/raise', data),
 
     // === Push Notifications ===
     savePushSubscription: (data) => api.post('/user/push-subscription', data),

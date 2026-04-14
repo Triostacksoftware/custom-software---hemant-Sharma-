@@ -75,7 +75,7 @@ exports.adminLogin = async (req, res, next) => {
     }
 };
 
-//controller to fetch admin dashboard stats
+// Controller to fetch admin dashboard stats
 exports.getDashboardStats = async (req, res, next) => {
     try {
 
@@ -90,10 +90,10 @@ exports.getDashboardStats = async (req, res, next) => {
             employeeStats,
             transactionStats,
             liveBiddingRooms,
-            activeGroups
+            activeGroups,
+            cashInHandAgg           // NEW: net cash across all groups all time
         ] = await Promise.all([
 
-            // Existing: group / user / employee counts via $facet
             Groups.aggregate([{
                 $facet: {
                     total: [{ $count: "count" }],
@@ -123,12 +123,7 @@ exports.getDashboardStats = async (req, res, next) => {
 
             // Today's and this month's COMPLETED contribution totals
             Transaction.aggregate([
-                {
-                    $match: {
-                        type: "CONTRIBUTION",
-                        status: "COMPLETED"
-                    }
-                },
+                { $match: { type: "CONTRIBUTION", status: "COMPLETED" } },
                 {
                     $facet: {
                         today: [
@@ -143,14 +138,44 @@ exports.getDashboardStats = async (req, res, next) => {
                 }
             ]),
 
-            // Count of live bidding rooms
             BiddingRound.countDocuments({ status: "OPEN" }),
 
-            // Active groups with currentMonth — needed for Round 2
             Groups.find({ status: "ACTIVE" })
                 .select("_id currentMonth totalMembers")
-                .lean()
+                .lean(),
+
+            // ── NEW: Cash in hand calculation ─────────────────────────────────
+            //
+            // Net cash = total COMPLETED contributions collected (all time, all groups)
+            //          - total COMPLETED winner payouts made (all time, all groups)
+            //
+            // This is the running physical cash balance across the entire operation.
+            // Example: ₹1,00,000 collected today, ₹80,000 paid to winner = ₹20,000 in hand.
+            //
+            // Uses a single aggregate with $facet so both totals are fetched
+            // in one DB round trip.
+            Transaction.aggregate([
+                { $match: { status: "COMPLETED" } },
+                {
+                    $facet: {
+                        totalContributions: [
+                            { $match: { type: "CONTRIBUTION" } },
+                            { $group: { _id: null, total: { $sum: "$amount" } } }
+                        ],
+                        totalPayouts: [
+                            { $match: { type: "WINNER_PAYOUT" } },
+                            { $group: { _id: null, total: { $sum: "$amount" } } }
+                        ]
+                    }
+                }
+            ])
         ]);
+
+        // ── Derive cash in hand from aggregate result ─────────────────────────
+        const cashAgg = cashInHandAgg[0];
+        const totalContributions = cashAgg.totalContributions[0]?.total || 0;
+        const totalPayouts = cashAgg.totalPayouts[0]?.total || 0;
+        const cashInHand = Math.max(0, totalContributions - totalPayouts);
 
         // ── Round 2: fetch current payment-phase rounds for active groups ──────
         const groupIds = activeGroups.map(g => g._id);
@@ -163,7 +188,6 @@ exports.getDashboardStats = async (req, res, next) => {
             }).select("_id groupId monthNumber status payablePerMember winnerReceivableAmount winnerUserId").lean()
             : [];
 
-        // Filter to only rounds matching the group's current month
         const activePaymentRounds = currentRounds.filter(r => {
             const group = groupMonthMap.get(r.groupId.toString());
             return group && r.monthNumber === group.currentMonth;
@@ -203,7 +227,6 @@ exports.getDashboardStats = async (req, res, next) => {
             const group = groupMonthMap.get(round.groupId.toString());
             if (!group) return;
 
-            // ── Pending payout — winner only ──────────────────────────────────
             if (round.winnerUserId) {
                 const winnerTx = txAgg.find(
                     item =>
@@ -220,8 +243,6 @@ exports.getDashboardStats = async (req, res, next) => {
                 }
             }
 
-            // ── Pending contributions — all non-winner members ────────────────
-            // Get all per-member contribution payments for this round
             const contributionTxs = txAgg.filter(
                 item =>
                     item._id.biddingRoundId.toString() === round._id.toString() &&
@@ -233,13 +254,9 @@ exports.getDashboardStats = async (req, res, next) => {
 
             contributionTxs.forEach(item => {
                 totalPaidContribution += item.totalPaid;
-                if (item.totalPaid >= (round.payablePerMember || 0)) {
-                    membersPaidFull++;
-                }
+                if (item.totalPaid >= (round.payablePerMember || 0)) membersPaidFull++;
             });
 
-            // For ADMIN_ROUND (month 1): winnerUserId is null (admin won),
-            // all members pay full monthlyContribution = payablePerMember
             const nonWinnerCount = group.totalMembers;
             const expectedTotal = (round.payablePerMember || 0) * nonWinnerCount;
             const pendingTotal = Math.max(0, expectedTotal - totalPaidContribution);
@@ -264,6 +281,10 @@ exports.getDashboardStats = async (req, res, next) => {
                     pendingPayoutThisMonth,
                     todaysCollection: t.today[0]?.total || 0,
                     thisMonthsCollection: t.thisMonth[0]?.total || 0,
+
+                    // NEW: net cash physically in hand across all groups all time
+                    // = total COMPLETED contributions - total COMPLETED winner payouts
+                    cashInHand
                 },
                 actionBadges: {
                     membersToCollectFrom: membersToCollectFromCount,
@@ -271,7 +292,7 @@ exports.getDashboardStats = async (req, res, next) => {
                     liveBiddingRooms
                 },
 
-                // Kept from existing controller — used by other admin UI screens
+                // Kept for other admin UI screens
                 groups: {
                     total: g.total[0]?.count || 0,
                     active: g.active[0]?.count || 0,

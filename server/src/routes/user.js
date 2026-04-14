@@ -55,4 +55,8 @@ router.get('/user/requests/pending-dues', authentication.isMember, userControlle
 //endpoint to save push subscription object
 router.post('/user/push-subscription', authentication.isMember, userController.savePushSubscription);
 
+//endpoint to raise a payment collection or payout request
+router.post('/user/requests/raise', authentication.isMember, userController.raisePaymentRequest);
+
+
 module.exports = router;

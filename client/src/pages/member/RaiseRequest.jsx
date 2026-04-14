@@ -39,17 +39,22 @@ const RaiseRequest = () => {
             // Set this specific button to loading
             setRequestStatuses(prev => ({ ...prev, [statusKey]: 'loading' }));
 
-            // TODO: In the future, this will be your real API call
-            // await userApi.sendNotificationRequest({ groupId, requestType: type, amount });
+            // Map the frontend 'pay'/'receive' to backend enums
+            const backendType = type === 'pay' ? 'CONTRIBUTION' : 'WINNER_PAYOUT';
 
-            // Simulating API delay for the UI
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Call the live API
+            const response = await userApi.raisePaymentRequest({
+                groupId,
+                type: backendType
+            });
 
-            // Set to success
-            setRequestStatuses(prev => ({ ...prev, [statusKey]: 'success' }));
+            if (response.data.success) {
+                // Set to success to disable the button and show the CheckCircle
+                setRequestStatuses(prev => ({ ...prev, [statusKey]: 'success' }));
+            }
 
         } catch (err) {
-            alert("Failed to send request. Please try again.");
+            alert(err.response?.data?.message || "Failed to send request. Please try again.");
             setRequestStatuses(prev => ({ ...prev, [statusKey]: null }));
         }
     };

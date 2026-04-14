@@ -15,7 +15,8 @@ const {
     notifyMember,
     notifyEmployee,
     notifyGroupMembers,
-    notifyAdmins
+    notifyAdmins,
+    notifyAllEmployees
 } = require("../services/notificationService.js");
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
@@ -886,7 +887,6 @@ exports.requestToJoinGroup = async (req, res, next) => {
             });
         }
 
-        // COMPLETED groups cannot be joined
         if (group.status === "COMPLETED") {
             return res.status(400).json({
                 success: false,
@@ -894,7 +894,6 @@ exports.requestToJoinGroup = async (req, res, next) => {
             });
         }
 
-        // Already a member
         const alreadyMember = group.members.some(
             m => m.userId.toString() === userId.toString()
         );
@@ -905,7 +904,6 @@ exports.requestToJoinGroup = async (req, res, next) => {
             });
         }
 
-        // Already has a pending request — prevent duplicate requests
         const existingRequest = group.joinRequests?.find(
             r => r.userId.toString() === userId.toString() && r.status === "PENDING"
         );
@@ -916,13 +914,19 @@ exports.requestToJoinGroup = async (req, res, next) => {
             });
         }
 
-        // Group is full — block the request regardless of DRAFT or ACTIVE status.
-        // For ACTIVE groups the message is more specific since they cannot be
-        // added even if admin wanted to.
-        const isFull = group.members.length >= group.totalMembers;
+        const isFull = group.members.length >= group.totalMembers - 1;
         if (isFull) {
-            // TODO: send notification to admin that this user showed interest
-            // even though the group is full — to be implemented in notifications phase
+            // Group is full — still notify admin that someone showed interest
+            const io = req.app.get("io");
+            const user = req.user;
+
+            notifyAdmins(
+                "Member Interest — Group Full",
+                `${user.name} (${user.phoneNumber}) wants to join "${group.name}" but it is full. Consider creating a new group.`,
+                "GROUP_JOIN_REQUEST",
+                io,
+                group._id
+            );
 
             const message = group.status === "ACTIVE"
                 ? "This group is full and no longer accepting new members. Please contact the admin directly"
@@ -934,7 +938,7 @@ exports.requestToJoinGroup = async (req, res, next) => {
             });
         }
 
-        // All validations passed — push join request into the group's joinRequests array
+        // Save join request
         await Groups.findByIdAndUpdate(groupId, {
             $push: {
                 joinRequests: {
@@ -945,8 +949,21 @@ exports.requestToJoinGroup = async (req, res, next) => {
             }
         });
 
-        // TODO: send GROUP_JOIN_REQUEST notification to admin
-        // to be implemented in the notifications phase
+        // ── Notify admin — a member wants to join this group ──────────────────
+        //
+        // Admin needs to approve or reject the request from their panel.
+        // The notification includes member name and phone so admin can
+        // identify them without opening the approvals page.
+        const io = req.app.get("io");
+        const user = req.user;
+
+        notifyAdmins(
+            "New Group Join Request 👤",
+            `${user.name} (${user.phoneNumber}) has requested to join "${group.name}".`,
+            "GROUP_JOIN_REQUEST",
+            io,
+            group._id
+        );
 
         return res.status(200).json({
             success: true,
@@ -1439,6 +1456,180 @@ exports.savePushSubscription = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Push subscription saved"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// POST /user/requests/raise
+//controller to raise a payment request
+exports.raisePaymentRequest = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+        const { groupId, type } = req.body;
+
+        // ── Validation ────────────────────────────────────────────────────────
+        if (!groupId) {
+            return res.status(400).json({
+                success: false,
+                message: "groupId is required"
+            });
+        }
+
+        if (!["CONTRIBUTION", "WINNER_PAYOUT"].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: "type must be CONTRIBUTION or WINNER_PAYOUT"
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(groupId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid group ID"
+            });
+        }
+
+        // ── Fetch and validate group ──────────────────────────────────────────
+        const group = await Groups.findById(groupId)
+            .select("name status currentMonth members")
+            .lean();
+
+        if (!group) {
+            return res.status(404).json({
+                success: false,
+                message: "Group not found"
+            });
+        }
+
+        if (group.status !== "ACTIVE") {
+            return res.status(400).json({
+                success: false,
+                message: "Group is not active"
+            });
+        }
+
+        // Confirm member belongs to this group
+        const isMember = group.members.some(
+            m => m.userId.toString() === userId.toString()
+        );
+        if (!isMember) {
+            return res.status(403).json({
+                success: false,
+                message: "You are not a member of this group"
+            });
+        }
+
+        // ── Fetch current bidding round ───────────────────────────────────────
+        const round = await BiddingRound.findOne({
+            groupId,
+            monthNumber: group.currentMonth,
+            status: { $in: ["PAYMENT_OPEN", "ADMIN_ROUND"] }
+        }).lean();
+
+        if (!round) {
+            return res.status(400).json({
+                success: false,
+                message: "No active payment phase found for this group"
+            });
+        }
+
+        // ── Type-specific checks ──────────────────────────────────────────────
+
+        if (type === "CONTRIBUTION") {
+            // Winner does not pay contribution
+            if (round.winnerUserId && round.winnerUserId.toString() === userId.toString()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "You are the winner this month and do not need to pay a contribution"
+                });
+            }
+
+            // Check there is actually something remaining to pay
+            const paidAgg = await Transaction.aggregate([
+                {
+                    $match: {
+                        groupId: new mongoose.Types.ObjectId(groupId),
+                        userId: new mongoose.Types.ObjectId(userId),
+                        monthNumber: group.currentMonth,
+                        type: "CONTRIBUTION",
+                        status: { $in: ["PENDING", "COMPLETED"] }
+                    }
+                },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]);
+
+            const alreadyAccountedFor = paidAgg[0]?.total || 0;
+            const remaining = round.payablePerMember - alreadyAccountedFor;
+
+            if (remaining <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Your contribution for this month is already fully paid"
+                });
+            }
+        }
+
+        if (type === "WINNER_PAYOUT") {
+            // Only winner can raise payout request
+            if (!round.winnerUserId || round.winnerUserId.toString() !== userId.toString()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Only the winner can raise a payout request"
+                });
+            }
+
+            const receivedAgg = await Transaction.aggregate([
+                {
+                    $match: {
+                        groupId: new mongoose.Types.ObjectId(groupId),
+                        userId: new mongoose.Types.ObjectId(userId),
+                        monthNumber: group.currentMonth,
+                        type: "WINNER_PAYOUT",
+                        status: { $in: ["PENDING", "COMPLETED"] }
+                    }
+                },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]);
+
+            const alreadyAccountedFor = receivedAgg[0]?.total || 0;
+            const remaining = round.winnerReceivableAmount - alreadyAccountedFor;
+
+            if (remaining <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Your payout for this month has already been fully processed"
+                });
+            }
+        }
+
+        // ── Notify employees and admin ────────────────────────────────────────
+        //
+        // Both receive PAYMENT_COLLECTION_REQUEST so whoever is available
+        // can act on it. The message includes the member's name, group name,
+        // month number, and request type so no additional context is needed.
+        const io = req.app.get("io");
+        const user = req.user;
+
+        const requestLabel = type === "CONTRIBUTION"
+            ? "pay their contribution"
+            : "receive their payout";
+
+        const title = "Payment Collection Request 📩";
+        const body = `${user.name} (${user.phoneNumber}) wants to ${requestLabel} for "${group.name}" Month ${group.currentMonth}.`;
+
+        // Notify all employees
+        notifyAllEmployees(title, body, "PAYMENT_COLLECTION_REQUEST", io, group._id);
+
+        // Notify admin separately so they also have visibility
+        notifyAdmins(title, body, "PAYMENT_COLLECTION_REQUEST", io, group._id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Your request has been sent. An employee will contact you shortly."
         });
 
     } catch (error) {

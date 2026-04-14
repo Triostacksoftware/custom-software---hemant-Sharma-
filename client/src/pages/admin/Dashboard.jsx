@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { adminApi } from '../../api/adminApi';
-import BellNotification from '../../components/common/BellNotification'; // <-- NEW IMPORT
+import BellNotification from '../../components/common/BellNotification';
 import logo from '../../assets/images/logo.png';
 import './Dashboard.css';
 
@@ -28,7 +28,6 @@ const Dashboard = () => {
     useEffect(() => {
         const fetchDashboard = async () => {
             try {
-                // Fetch Actual Dashboard Data from Backend
                 const response = await adminApi.getDashboardStats();
                 if (response.data.success) {
                     const data = response.data.data;
@@ -98,7 +97,6 @@ const Dashboard = () => {
                 </div>
                 <div className="header-right">
 
-                    {/* === CLEANED UP NOTIFICATION COMPONENT === */}
                     <BellNotification api={adminApi} />
 
                     <div className="user-profile-section">
@@ -114,22 +112,8 @@ const Dashboard = () => {
                 {/* TOP SECTION: Statistics Cards */}
                 <h2 className="section-heading">Overview & Statistics</h2>
                 <div className="admin-stats-grid">
-                    <div className="stat-card">
-                        <div className="stat-icon icon-slate"><Folder size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Total Groups</p>
-                            <h3 className="stat-value">{stats.totalGroups}</h3>
-                        </div>
-                    </div>
 
-                    <div className="stat-card">
-                        <div className="stat-icon icon-slate"><Users size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Total Members</p>
-                            <h3 className="stat-value">{stats.totalMembers}</h3>
-                        </div>
-                    </div>
-
+                    {/* 1. Pending Collection */}
                     <div className="stat-card">
                         <div className="stat-icon icon-rose"><TrendingDown size={24} /></div>
                         <div className="stat-info">
@@ -138,6 +122,7 @@ const Dashboard = () => {
                         </div>
                     </div>
 
+                    {/* 2. Pending Payout */}
                     <div className="stat-card">
                         <div className="stat-icon icon-emerald"><TrendingUp size={24} /></div>
                         <div className="stat-info">
@@ -146,6 +131,7 @@ const Dashboard = () => {
                         </div>
                     </div>
 
+                    {/* 3. Today's Collection */}
                     <div className="stat-card">
                         <div className="stat-icon icon-navy"><Sun size={24} /></div>
                         <div className="stat-info">
@@ -154,6 +140,16 @@ const Dashboard = () => {
                         </div>
                     </div>
 
+                    {/* 4. Cash In Hand (NEW) */}
+                    <div className="stat-card">
+                        <div className="stat-icon icon-emerald"><IndianRupee size={24} /></div>
+                        <div className="stat-info">
+                            <p className="stat-title">Cash in Hand</p>
+                            <h3 className="stat-value text-emerald">{formatCurrency(stats.cashInHand)}</h3>
+                        </div>
+                    </div>
+
+                    {/* 5. This Month's Collection */}
                     <div className="stat-card">
                         <div className="stat-icon icon-navy"><Calendar size={24} /></div>
                         <div className="stat-info">
@@ -161,6 +157,25 @@ const Dashboard = () => {
                             <h3 className="stat-value">{formatCurrency(stats.thisMonthsCollection)}</h3>
                         </div>
                     </div>
+
+                    {/* 6. Total Groups */}
+                    <div className="stat-card">
+                        <div className="stat-icon icon-slate"><Folder size={24} /></div>
+                        <div className="stat-info">
+                            <p className="stat-title">Total Groups</p>
+                            <h3 className="stat-value">{stats.totalGroups}</h3>
+                        </div>
+                    </div>
+
+                    {/* 7. Total Members */}
+                    <div className="stat-card">
+                        <div className="stat-icon icon-slate"><Users size={24} /></div>
+                        <div className="stat-info">
+                            <p className="stat-title">Total Members</p>
+                            <h3 className="stat-value">{stats.totalMembers}</h3>
+                        </div>
+                    </div>
+
                 </div>
 
                 <hr className="admin-divider" />

@@ -155,8 +155,12 @@ const BiddingRoom = () => {
         e.preventDefault();
         const amountNum = Number(bidAmount);
 
-        if (amountNum < myMinimumAllowedBid || amountNum > roundDetails.maxBid) {
-            return alert(`Bid must be between ₹${myMinimumAllowedBid} and ₹${roundDetails.maxBid}`);
+        // Validation split to hide the max limit from the user
+        if (amountNum < myMinimumAllowedBid) {
+            return alert(`Bid must be at least ₹${myMinimumAllowedBid}`);
+        }
+        if (amountNum > roundDetails.maxBid) {
+            return alert(`Bid exceeds the maximum allowed limit for this round.`);
         }
         if (amountNum % roundDetails.bidMultiple !== 0) {
             return alert(`Bid must be a multiple of ₹${roundDetails.bidMultiple}`);
@@ -281,8 +285,8 @@ const BiddingRoom = () => {
                     <>
                         <div className="room-info-panel">
                             <div className="info-row">
-                                <span><Gavel size={18} /> Limits:</span>
-                                <strong>{formatCurrency(roundDetails.minBid)} - {formatCurrency(roundDetails.maxBid)}</strong>
+                                <span><Gavel size={18} /> Minimum Bid:</span>
+                                <strong>{formatCurrency(roundDetails.minBid)}</strong>
                             </div>
                             <div className="info-row">
                                 <span><Clock size={18} /> Multiples of:</span>
@@ -325,7 +329,6 @@ const BiddingRoom = () => {
                                         value={bidAmount}
                                         onChange={(e) => setBidAmount(e.target.value)}
                                         min={myMinimumAllowedBid}
-                                        max={roundDetails.maxBid}
                                         step={roundDetails.bidMultiple}
                                         required
                                     />
