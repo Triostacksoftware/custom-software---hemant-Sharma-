@@ -99,5 +99,8 @@ router.get('/admin/notifications', authentication.authenticate, authentication.i
 //endpoint to save push subscription object
 router.post('/admin/push-subscription', authentication.authenticate, authentication.isAdmin, adminController.saveAdminPushSubscription);
 
+//endpoint to remind a customer for collection
+router.post('/admin/collections/remind', authentication.authenticate, authentication.isAdmin, adminController.sendCollectionReminder);
+
 
 module.exports = router;

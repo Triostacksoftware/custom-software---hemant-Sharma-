@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, BellRing, User, TrendingDown, Users, CheckCircle, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
-import './Collections.css'; // We will create a specific CSS file for this
+import './Collections.css';
 
 const Collections = () => {
     const navigate = useNavigate();
@@ -17,7 +17,7 @@ const Collections = () => {
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedGroupId, setSelectedGroupId] = useState('');
-    const [activeGroups, setActiveGroups] = useState([]); // For the dropdown filter
+    const [activeGroups, setActiveGroups] = useState([]);
 
     // Action States
     const [remindingId, setRemindingId] = useState(null);
@@ -26,7 +26,6 @@ const Collections = () => {
     useEffect(() => {
         const fetchGroupsForFilter = async () => {
             try {
-                // Fetch up to 100 active groups just for the dropdown
                 const res = await adminApi.groups.fetchAll({ status: 'ACTIVE', limit: 100 });
                 if (res.data.success) {
                     setActiveGroups(res.data.data.groups);
@@ -52,7 +51,6 @@ const Collections = () => {
                 setCollections(response.data.data.collections);
                 setSummary(response.data.data.summary);
 
-                // Map backend pagination to our frontend state format
                 const pag = response.data.data.pagination;
                 setPagination({
                     currentPage: pag.page,
@@ -85,21 +83,23 @@ const Collections = () => {
         }
     };
 
-    // Mock Reminder Function
+    // Live Reminder Function
     const handleSendReminder = async (record) => {
         const uniqueId = `${record.groupId}_${record.memberId}`;
         setRemindingId(uniqueId);
 
         try {
-            // TODO: In the future, this will call your actual notification API
-            // await adminApi.notifications.sendReminder({ userId: record.memberId, groupId: record.groupId, amount: record.pendingAmount });
+            const response = await adminApi.collections.sendReminder({
+                userId: record.memberId,
+                groupId: record.groupId,
+                amount: record.pendingAmount
+            });
 
-            // Simulating API delay
-            await new Promise(resolve => setTimeout(resolve, 800));
-
-            alert(`Reminder sent to ${record.memberName} for ₹${record.pendingAmount}`);
+            if (response.data.success) {
+                alert(`Reminder sent successfully to ${record.memberName}`);
+            }
         } catch (err) {
-            alert("Failed to send reminder");
+            alert(err.response?.data?.message || "Failed to send reminder");
         } finally {
             setRemindingId(null);
         }

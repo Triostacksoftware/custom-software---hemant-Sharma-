@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, IndianRupee, Folder, CheckCircle, AlertTriangle, ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
-import './Members.css'; // Reuses the same CSS file for consistency
+import './Members.css';
 
 const MemberDetails = () => {
     const { userId } = useParams();
@@ -11,7 +11,7 @@ const MemberDetails = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [details, setDetails] = useState(null);
-    const [expandedGroup, setExpandedGroup] = useState(null); // Track which group's payment history is open
+    const [expandedGroup, setExpandedGroup] = useState(null);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -109,15 +109,22 @@ const MemberDetails = () => {
                         <div className="stat-box">
                             <div className="stat-icon icon-slate"><Folder size={20} /></div>
                             <div className="stat-text">
-                                <p>Active Groups</p>
-                                <h3>{financialSummary.totalGroups}</h3>
+                                <p>Won / Active Groups</p>
+                                <h3>{financialSummary.totalGroupsWon} / {financialSummary.totalGroups}</h3>
+                            </div>
+                        </div>
+                        <div className="stat-box">
+                            <div className="stat-icon bg-blue-light text-blue"><IndianRupee size={20} /></div>
+                            <div className="stat-text">
+                                <p>Contributed (Lifetime)</p>
+                                <h3 className="text-blue">{formatCurrency(financialSummary.totalPaidAcrossGroups)}</h3>
                             </div>
                         </div>
                         <div className="stat-box">
                             <div className="stat-icon icon-emerald"><IndianRupee size={20} /></div>
                             <div className="stat-text">
-                                <p>Total Contributed (Lifetime)</p>
-                                <h3>{formatCurrency(financialSummary.totalPaidAcrossGroups)}</h3>
+                                <p>Received (Lifetime)</p>
+                                <h3 className="text-emerald">{formatCurrency(financialSummary.totalReceivedAcrossGroups)}</h3>
                             </div>
                         </div>
                     </div>

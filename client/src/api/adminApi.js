@@ -54,14 +54,15 @@ export const adminApi = {
     // Collection Management
     collections: {
         getPending: (params = {}) => api.get('/admin/collections/pending', { params }),
+        sendReminder: (data) => api.post('/admin/collections/remind', data), // <-- NEW ENDPOINT
     },
 
-    // Payout Management (NEW)
+    // Payout Management
     payouts: {
         getPending: (params = {}) => api.get('/admin/payouts/pending', { params }),
     },
 
-    // Advertisement Management (NEW)
+    // Advertisement Management
     ads: {
         create: (data) => api.post('/admin/ads', data),
         fetchAll: () => api.get('/admin/ads'),
@@ -71,7 +72,7 @@ export const adminApi = {
         delete: (adId) => api.delete(`/admin/ads/${adId}`)
     },
 
-    // Dashboard Stats (UPDATED ROUTE)
+    // Dashboard Stats
     getDashboardStats: () => api.get('/admin/dashboard/stats/'),
 
     // === Notification Endpoints ===

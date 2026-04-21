@@ -1093,13 +1093,16 @@ exports.getGroupDetails = async (req, res, next) => {
             r => r.winnerUserId?.toString() === userId.toString()
         );
 
+        //check if the member has won the current round
+        const isCurrentWinner = currentRound?.winnerUserId?.toString() === userId.toString();
+
         //Build memberInfo with pending amounts
         const memberInfo = {
             hasWon: !!winningRound,
             winningMonth: winningRound ? winningRound.monthNumber : null,
             winningAmount: winningRound ? winningRound.winnerReceivableAmount : 0,
-            pendingContribution: 0,
-            pendingPayout: 0
+            pendingContribution: isCurrentWinner ? 0 : (currentRound?.payablePerMember || 0),
+            pendingPayout: isCurrentWinner ? (currentRound?.winnerReceivableAmount || 0) : 0
         };
 
         //Format transactions and accumulate pending amounts
@@ -1193,7 +1196,7 @@ exports.getGroupDetails = async (req, res, next) => {
                 group: {
                     _id: group._id,
                     name: group.name,
-                    totalMembers: group.members?.length || 0,
+                    totalMembers: group.totalMembers,
                     totalMonths: group.totalMonths,
                     monthlyContribution: group.monthlyContribution,
                     currentMonth: group.currentMonth,

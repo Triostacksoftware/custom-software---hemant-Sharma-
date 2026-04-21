@@ -78,12 +78,10 @@ exports.adminLogin = async (req, res, next) => {
 // Controller to fetch admin dashboard stats
 exports.getDashboardStats = async (req, res, next) => {
     try {
-
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-        // ── Round 1: all independent queries fire together ────────────────────
         const [
             groupStats,
             userStats,
@@ -91,7 +89,7 @@ exports.getDashboardStats = async (req, res, next) => {
             transactionStats,
             liveBiddingRooms,
             activeGroups,
-            cashInHandAgg           // NEW: net cash across all groups all time
+            cashInHandAgg
         ] = await Promise.all([
 
             Groups.aggregate([{
@@ -121,7 +119,6 @@ exports.getDashboardStats = async (req, res, next) => {
                 }
             }]),
 
-            // Today's and this month's COMPLETED contribution totals
             Transaction.aggregate([
                 { $match: { type: "CONTRIBUTION", status: "COMPLETED" } },
                 {
@@ -141,19 +138,9 @@ exports.getDashboardStats = async (req, res, next) => {
             BiddingRound.countDocuments({ status: "OPEN" }),
 
             Groups.find({ status: "ACTIVE" })
-                .select("_id currentMonth totalMembers")
+                .select("_id currentMonth totalMembers members")  // members needed for count fix
                 .lean(),
 
-            // ── NEW: Cash in hand calculation ─────────────────────────────────
-            //
-            // Net cash = total COMPLETED contributions collected (all time, all groups)
-            //          - total COMPLETED winner payouts made (all time, all groups)
-            //
-            // This is the running physical cash balance across the entire operation.
-            // Example: ₹1,00,000 collected today, ₹80,000 paid to winner = ₹20,000 in hand.
-            //
-            // Uses a single aggregate with $facet so both totals are fetched
-            // in one DB round trip.
             Transaction.aggregate([
                 { $match: { status: "COMPLETED" } },
                 {
@@ -171,13 +158,11 @@ exports.getDashboardStats = async (req, res, next) => {
             ])
         ]);
 
-        // ── Derive cash in hand from aggregate result ─────────────────────────
         const cashAgg = cashInHandAgg[0];
         const totalContributions = cashAgg.totalContributions[0]?.total || 0;
         const totalPayouts = cashAgg.totalPayouts[0]?.total || 0;
         const cashInHand = Math.max(0, totalContributions - totalPayouts);
 
-        // ── Round 2: fetch current payment-phase rounds for active groups ──────
         const groupIds = activeGroups.map(g => g._id);
         const groupMonthMap = new Map(activeGroups.map(g => [g._id.toString(), g]));
 
@@ -193,7 +178,6 @@ exports.getDashboardStats = async (req, res, next) => {
             return group && r.monthNumber === group.currentMonth;
         });
 
-        // ── Round 3: aggregate COMPLETED transactions for those rounds ─────────
         const roundIds = activePaymentRounds.map(r => r._id);
 
         const txAgg = roundIds.length
@@ -217,7 +201,6 @@ exports.getDashboardStats = async (req, res, next) => {
             ])
             : [];
 
-        // ── Financial calculations ─────────────────────────────────────────────
         let pendingCollectionThisMonth = 0;
         let pendingPayoutThisMonth = 0;
         let membersToCollectFromCount = 0;
@@ -227,11 +210,14 @@ exports.getDashboardStats = async (req, res, next) => {
             const group = groupMonthMap.get(round.groupId.toString());
             if (!group) return;
 
-            if (round.winnerUserId) {
+            const winnerIdStr = round.winnerUserId?.toString();
+
+            // Pending payout — winner only
+            if (winnerIdStr) {
                 const winnerTx = txAgg.find(
                     item =>
                         item._id.biddingRoundId.toString() === round._id.toString() &&
-                        item._id.userId.toString() === round.winnerUserId.toString() &&
+                        item._id.userId.toString() === winnerIdStr &&
                         item._id.type === "WINNER_PAYOUT"
                 );
                 const paidPayout = winnerTx?.totalPaid || 0;
@@ -242,6 +228,25 @@ exports.getDashboardStats = async (req, res, next) => {
                     membersToPay++;
                 }
             }
+
+            // ── FIX: nonWinnerCount excludes admin ────────────────────────────
+            //
+            // group.members[] contains ONLY regular users — admin is not in it.
+            // So group.members.length = totalMembers - 1 (admin excluded).
+            //
+            // For ADMIN_ROUND (month 1): all regular members owe contribution.
+            //   nonWinnerCount = group.members.length
+            //
+            // For PAYMENT_OPEN (month 2+): regular members minus the winner.
+            //   nonWinnerCount = regular members who are not the winner
+            //   = group.members.filter(m => m.userId != winnerId).length
+            //
+            // This means admin's own contribution is never counted as pending,
+            // which is correct — admin adds it implicitly without being collected.
+            const regularNonWinners = group.members.filter(
+                m => m.userId.toString() !== winnerIdStr
+            );
+            const nonWinnerCount = regularNonWinners.length;
 
             const contributionTxs = txAgg.filter(
                 item =>
@@ -257,7 +262,6 @@ exports.getDashboardStats = async (req, res, next) => {
                 if (item.totalPaid >= (round.payablePerMember || 0)) membersPaidFull++;
             });
 
-            const nonWinnerCount = group.totalMembers;
             const expectedTotal = (round.payablePerMember || 0) * nonWinnerCount;
             const pendingTotal = Math.max(0, expectedTotal - totalPaidContribution);
 
@@ -265,7 +269,6 @@ exports.getDashboardStats = async (req, res, next) => {
             membersToCollectFromCount += Math.max(0, nonWinnerCount - membersPaidFull);
         });
 
-        // ── Shape response ────────────────────────────────────────────────────
         const g = groupStats[0];
         const u = userStats[0];
         const e = employeeStats[0];
@@ -281,9 +284,6 @@ exports.getDashboardStats = async (req, res, next) => {
                     pendingPayoutThisMonth,
                     todaysCollection: t.today[0]?.total || 0,
                     thisMonthsCollection: t.thisMonth[0]?.total || 0,
-
-                    // NEW: net cash physically in hand across all groups all time
-                    // = total COMPLETED contributions - total COMPLETED winner payouts
                     cashInHand
                 },
                 actionBadges: {
@@ -291,8 +291,6 @@ exports.getDashboardStats = async (req, res, next) => {
                     membersToPay,
                     liveBiddingRooms
                 },
-
-                // Kept for other admin UI screens
                 groups: {
                     total: g.total[0]?.count || 0,
                     active: g.active[0]?.count || 0,
@@ -507,7 +505,6 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        // Fetch group
         const group = await Groups.findById(groupId);
 
         if (!group) {
@@ -517,7 +514,6 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        // Group must be in DRAFT
         if (group.status !== "DRAFT") {
             return res.status(400).json({
                 success: false,
@@ -525,7 +521,6 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        // All regular member slots must be filled before activation
         if (group.members.length !== group.totalMembers - 1) {
             return res.status(400).json({
                 success: false,
@@ -533,8 +528,13 @@ exports.activateGroup = async (req, res, next) => {
             });
         }
 
-        // Create month 1 ADMIN_ROUND
         const totalPoolAmount = group.totalMembers * group.monthlyContribution;
+
+        // FIX: adminPayoutAmount = physical cash admin collects from market.
+        // Admin's own contribution is implicit — he does not pay himself.
+        // Physical collection = (totalMembers - 1) × monthlyContribution
+        // = group.members.length × monthlyContribution (same thing, cleaner)
+        const adminPayoutAmount = group.members.length * group.monthlyContribution;
 
         await BiddingRound.create({
             groupId: group._id,
@@ -544,29 +544,22 @@ exports.activateGroup = async (req, res, next) => {
             payablePerMember: group.monthlyContribution, // full amount — no dividend in month 1
             dividendPerMember: 0,
             winningBidAmount: 0,
-            winnerReceivableAmount: totalPoolAmount,          // admin receives the full pool
+            winnerReceivableAmount: totalPoolAmount,           // conceptual full pool admin receives
             isAdminRound: true,
-            adminPayoutAmount: totalPoolAmount,
+            adminPayoutAmount,                                 // physical cash collected from market
             startedAt: new Date(),
             endedAt: new Date()
         });
 
-        // Reset all member payment statuses
         group.members.forEach(member => {
             member.currentPaymentStatus = "PENDING";
         });
 
-        // Activate group
         group.status = "ACTIVE";
         group.startDate = new Date();
 
         await group.save();
 
-        // ── Notify all group members ──────────────────────────────────────────
-        //
-        // Fires after group is saved. Notifies every member that the group
-        // has officially started and month 1 contributions are now open.
-        // Fire and forget — does not delay the response.
         const io = req.app.get("io");
         notifyGroupMembers(
             group._id,
@@ -1187,9 +1180,7 @@ exports.getGroupDetails = async (req, res, next) => {
 
 // controller to get full basic and financial details of a member
 exports.getMemberDetails = async (req, res, next) => {
-
     try {
-
         const { userId } = req.params;
 
         //Validate userId
@@ -1204,9 +1195,7 @@ exports.getMemberDetails = async (req, res, next) => {
 
         //Fetch user, transactions, and groups in parallel
         const [user, transactionAgg, groups] = await Promise.all([
-
             User.findById(userId).select("-password").lean(),
-
             Transaction.aggregate([
                 {
                     $match: {
@@ -1226,7 +1215,6 @@ exports.getMemberDetails = async (req, res, next) => {
                 {
                     $group: {
                         _id: "$groupId",
-
                         totalContribution: {
                             $sum: {
                                 $cond: [
@@ -1236,7 +1224,6 @@ exports.getMemberDetails = async (req, res, next) => {
                                 ]
                             }
                         },
-
                         totalPayout: {
                             $sum: {
                                 $cond: [
@@ -1246,7 +1233,6 @@ exports.getMemberDetails = async (req, res, next) => {
                                 ]
                             }
                         },
-
                         paymentHistory: {
                             $push: {
                                 monthNumber: "$monthNumber",
@@ -1261,7 +1247,6 @@ exports.getMemberDetails = async (req, res, next) => {
                     }
                 }
             ]),
-
             Groups.find({ "members.userId": userId }).lean()
         ]);
 
@@ -1276,23 +1261,30 @@ exports.getMemberDetails = async (req, res, next) => {
             transactionAgg.map(c => [c._id.toString(), c])
         );
 
+        // Safely calculate lifetime totals from the aggregate result
         let totalPaidAcrossGroups = 0;
+        let totalReceivedAcrossGroups = 0;
+        let totalGroupsWon = 0;
+
+        transactionAgg.forEach(stat => {
+            totalPaidAcrossGroups += stat.totalContribution || 0;
+            totalReceivedAcrossGroups += stat.totalPayout || 0;
+        });
 
         //Process each group
         const groupResponses = await Promise.all(
-
             groups.map(async (group) => {
-
                 const stats = transactionMap.get(group._id.toString()) || {};
-
                 const totalContribution = stats.totalContribution || 0;
                 const totalPayout = stats.totalPayout || 0;
-
-                totalPaidAcrossGroups += totalContribution;
 
                 const memberInfo = group.members.find(
                     m => m.userId.toString() === userId
                 );
+
+                if (memberInfo?.hasWon) {
+                    totalGroupsWon++;
+                }
 
                 // Fetch bidding rounds of this group
                 const rounds = await BiddingRound.find({
@@ -1301,13 +1293,10 @@ exports.getMemberDetails = async (req, res, next) => {
 
                 // Calculate expected contribution
                 let expectedTillNow = 0;
-
                 rounds.forEach(round => {
-
                     if (round.winnerUserId?.toString() !== userId) {
                         expectedTillNow += round.payablePerMember || 0;
                     }
-
                 });
 
                 return {
@@ -1325,9 +1314,7 @@ exports.getMemberDetails = async (req, res, next) => {
                     totalReceived: memberInfo?.totalReceived || 0,
                     paymentHistory: stats.paymentHistory || []
                 };
-
             })
-
         );
 
         return res.status(200).json({
@@ -1336,7 +1323,9 @@ exports.getMemberDetails = async (req, res, next) => {
                 user,
                 financialSummary: {
                     totalPaidAcrossGroups,
-                    totalGroups: groups.length
+                    totalReceivedAcrossGroups, // NEWLY ADDED
+                    totalGroups: groups.length,
+                    totalGroupsWon
                 },
                 groups: groupResponses
             }
@@ -1560,14 +1549,13 @@ exports.closeBidding = async (req, res, next) => {
 
         const io = req.app.get("io");
 
-        // ── No bids placed ────────────────────────────────────────────────────
+        // No bids placed
         if (bids.length === 0) {
             round.status = "CLOSED";
             await round.save();
 
             const group = await Groups.findById(round.groupId).select("name _id").lean();
 
-            // Notify admin — no bids, they need to reopen or take action
             notifyAdmins(
                 "Bidding Closed — No Bids",
                 `No bids were placed for "${group?.name}" Month ${round.monthNumber}. Please reopen bidding.`,
@@ -1585,14 +1573,13 @@ exports.closeBidding = async (req, res, next) => {
         const highestBidAmount = bids[0].bidAmount;
         const highestBidders = bids.filter(bid => bid.bidAmount === highestBidAmount);
 
-        // ── Tie case ──────────────────────────────────────────────────────────
+        // Tie case
         if (highestBidders.length > 1) {
             round.status = "CLOSED";
             await round.save();
 
             const group = await Groups.findById(round.groupId).select("name _id").lean();
 
-            // Notify admin — they must resolve the tie
             notifyAdmins(
                 "Bidding Tie — Action Required ⚠️",
                 `A tie was detected in "${group?.name}" Month ${round.monthNumber}. Please select the winner.`,
@@ -1613,9 +1600,8 @@ exports.closeBidding = async (req, res, next) => {
             });
         }
 
-        // ── Single winner ─────────────────────────────────────────────────────
+        // Single winner
         const winnerBid = highestBidders[0];
-
         const group = await Groups.findById(round.groupId);
 
         if (!group) {
@@ -1630,7 +1616,19 @@ exports.closeBidding = async (req, res, next) => {
         const winningBidAmount = winnerBid.bidAmount;
         const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
         const payablePerMember = group.monthlyContribution - dividendPerMember;
-        const winnerReceivable = totalPool - winningBidAmount;
+
+        // FIX: deduct admin's implicit contribution from winner's receivable.
+        //
+        // OLD: winnerReceivable = totalPool - winningBidAmount
+        //      = 1,20,000 - 3,000 = ₹1,17,000  ← wrong, includes admin's share
+        //
+        // NEW: winnerReceivable = totalPool - winningBidAmount - payablePerMember
+        //      = 1,20,000 - 3,000 - 39,000 = ₹78,000 ✓
+        //
+        // Admin physically collects payablePerMember from each non-winner regular
+        // member and adds his own payablePerMember implicitly. The winner receives
+        // only what flows in from regular member payments — not admin's implicit share.
+        const winnerReceivable = totalPool - winningBidAmount - payablePerMember;
 
         round.status = "PAYMENT_OPEN";
         round.winnerUserId = winnerBid.userId._id;
@@ -1658,24 +1656,17 @@ exports.closeBidding = async (req, res, next) => {
             { arrayFilters: [{ "elem.userId": { $ne: winnerBid.userId._id } }] }
         );
 
-        // Emit socket result to bidding room
         io.to(biddingRoundId.toString()).emit("biddingClosed", {
             winnerUserId: winnerBid.userId._id,
             winnerName: winnerBid.userId.name,
             winningBidAmount,
             winnerReceivableAmount: winnerReceivable,
             dividendPerMember,
-            payablePerMember,
+            payablePerMember
         });
 
-        // ── Notify members — different messages for winner vs non-winners ─────
-        //
-        // Winner gets a special message with their payout amount.
-        // Non-winners get the contribution amount they now owe.
-        // notifyGroupMembers sends the same message to everyone — so we send
-        // a general message to all, then override with a specific one to winner.
+        const { notifyMember } = require("../services/notificationService");
 
-        // General message to all group members
         notifyGroupMembers(
             group._id,
             "Bidding Result — Payments Now Open 🎉",
@@ -1684,9 +1675,6 @@ exports.closeBidding = async (req, res, next) => {
             io
         );
 
-        // Override for winner — separate targeted notification
-        notifyGroupMembers.name; // no-op, just for readability separation
-        const { notifyMember } = require("../services/notificationService");
         notifyMember(
             winnerBid.userId._id,
             "Congratulations! You Won! 🏆",
@@ -1696,7 +1684,6 @@ exports.closeBidding = async (req, res, next) => {
             group._id
         );
 
-        // Notify all employees — they need to start collections
         notifyAllEmployees(
             "Bidding Closed — Collections Open",
             `Month ${round.monthNumber} bidding is complete for "${group.name}". Collections and payout can now begin.`,
@@ -1796,9 +1783,11 @@ exports.resolveTie = async (req, res, next) => {
         const totalMembers = group.totalMembers;
         const totalPool = round.totalPoolAmount;
         const winningBidAmount = highestBidAmount;
-        const winnerReceivable = totalPool - winningBidAmount;
         const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
         const payablePerMember = group.monthlyContribution - dividendPerMember;
+
+        // FIX: same formula as closeBidding — deduct admin's implicit contribution
+        const winnerReceivable = totalPool - winningBidAmount - payablePerMember;
 
         round.status = "PAYMENT_OPEN";
         round.winnerUserId = selectedWinner.userId._id;
@@ -1826,7 +1815,6 @@ exports.resolveTie = async (req, res, next) => {
             { arrayFilters: [{ "elem.userId": { $ne: selectedWinner.userId._id } }] }
         );
 
-        // Emit result to bidding room
         const io = req.app.get("io");
         io.to(biddingRoundId.toString()).emit("biddingClosed", {
             winnerUserId: selectedWinner.userId._id,
@@ -1837,10 +1825,8 @@ exports.resolveTie = async (req, res, next) => {
             payablePerMember
         });
 
-        // ── Notify all group members + winner specifically + employees ─────────
         const { notifyMember } = require("../services/notificationService");
 
-        // General message to all members
         notifyGroupMembers(
             group._id,
             "Tie Resolved — Payments Now Open",
@@ -1849,7 +1835,6 @@ exports.resolveTie = async (req, res, next) => {
             io
         );
 
-        // Specific message to winner
         notifyMember(
             selectedWinner.userId._id,
             "Congratulations! You Won! 🏆",
@@ -1859,7 +1844,6 @@ exports.resolveTie = async (req, res, next) => {
             group._id
         );
 
-        // Notify all employees
         notifyAllEmployees(
             "Tie Resolved — Collections Open",
             `The tie in "${group.name}" Month ${round.monthNumber} is resolved. Collections and payout can now begin.`,
@@ -3063,6 +3047,41 @@ exports.saveAdminPushSubscription = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Push subscription saved"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// Controller to send payment reminder to a specific member
+exports.sendCollectionReminder = async (req, res, next) => {
+    try {
+        const { userId, groupId, amount } = req.body;
+
+        if (!userId || !groupId || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields (userId, groupId, amount)"
+            });
+        }
+
+        const group = await Groups.findById(groupId).select("name currentMonth").lean();
+        if (!group) {
+            return res.status(404).json({ success: false, message: "Group not found" });
+        }
+
+        const io = req.app.get("io");
+        const title = "Payment Reminder ⏰";
+        const body = `Reminder: You have a pending contribution of ₹${amount} for group "${group.name}" (Month ${group.currentMonth}). Please arrange for payment.`;
+
+        // Trigger the push notification, DB save, and socket event
+        await notifyMember(userId, title, body, "PAYMENT_REMINDER", io, groupId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Reminder sent successfully"
         });
 
     } catch (error) {

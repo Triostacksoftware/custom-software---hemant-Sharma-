@@ -202,7 +202,6 @@ const BiddingRoom = () => {
                             <h2>{formatCurrency(totalPool)}</h2>
                         </div>
 
-                        {/* FIX: Show Setup Form if roundData doesn't exist OR if it is PENDING */}
                         {(!roundData || roundData.status === 'PENDING') && groupData.currentMonth > 1 && (
                             <div className="action-box setup-box">
                                 <h4><PlayCircle size={20} /> Setup Bidding Round</h4>
@@ -238,13 +237,21 @@ const BiddingRoom = () => {
 
                         {roundData?.status === 'CLOSED' && tiedUsers.length > 0 && (
                             <div className="action-box tie-box">
-                                <h4><AlertTriangle size={20} /> Tie Detected!</h4>
+                                <div className="tie-box-header">
+                                    <AlertTriangle size={24} className="text-amber" />
+                                    <h4>Tie Detected!</h4>
+                                </div>
                                 <p>Multiple members placed the highest bid of <strong>{formatCurrency(tiedUsers[0].bidAmount)}</strong>. Please conduct an offline draw and select the winner below.</p>
                                 <div className="tie-list">
                                     {tiedUsers.map(user => (
                                         <div key={user.userId} className="tie-row">
-                                            <span>{user.name}</span>
-                                            <button className="elder-btn-primary" onClick={() => handleResolveTie(user.userId)} disabled={actionLoading}>Select</button>
+                                            <div className="tie-row-info">
+                                                <div className="feed-avatar"><User size={16} /></div>
+                                                <span title={user.name}>{user.name}</span>
+                                            </div>
+                                            <button className="elder-btn-primary" onClick={() => handleResolveTie(user.userId)} disabled={actionLoading}>
+                                                Select Winner
+                                            </button>
                                         </div>
                                     ))}
                                 </div>
