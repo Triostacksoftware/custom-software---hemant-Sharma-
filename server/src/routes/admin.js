@@ -102,5 +102,8 @@ router.post('/admin/push-subscription', authentication.authenticate, authenticat
 //endpoint to remind a customer for collection
 router.post('/admin/collections/remind', authentication.authenticate, authentication.isAdmin, adminController.sendCollectionReminder);
 
+//endpoint to update bid terms
+router.patch('/admin/bidding/update-terms/:roundId', authentication.authenticate, authentication.isAdmin, adminController.updateBidTerms);
+
 
 module.exports = router;

@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-
 const Schema = mongoose.Schema;
 
 const groupSchema = new Schema({
@@ -25,6 +24,22 @@ const groupSchema = new Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Employee",
         default: null
+    },
+
+    defaultBidTerms: {
+        minBid: {
+            type: Number,
+            default: 0
+        },
+        maxBid: {
+            type: Number,
+            default: 0
+        },
+        bidMultiple: {
+            type: Number,
+            default: 1,
+            min: 1
+        }
     },
 
     members: [{
@@ -83,6 +98,5 @@ const groupSchema = new Schema({
     endDate: Date,
 
 }, { timestamps: true });
-
 
 module.exports = mongoose.model("Groups", groupSchema);
