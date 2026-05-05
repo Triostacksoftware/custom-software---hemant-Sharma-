@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Gavel, PlayCircle, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Gavel, Settings, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { adminApi } from '../../api/adminApi';
 import './Bidding.css';
@@ -16,8 +16,8 @@ const BiddingRoom = () => {
     const [bids, setBids] = useState([]);
     const [socket, setSocket] = useState(null);
 
-    // Open Bidding Form State
-    const [openForm, setOpenForm] = useState({ minBid: '', maxBid: '', bidMultiple: '' });
+    // Update Terms Form State
+    const [termsForm, setTermsForm] = useState({ minBid: '', maxBid: '', bidMultiple: '', updateGroupDefaults: false });
 
     // Tie Resolution State
     const [tiedUsers, setTiedUsers] = useState([]);
@@ -93,31 +93,39 @@ const BiddingRoom = () => {
         };
     }, [roundData?._id]);
 
-    // Calculate Defaults for Form when groupData loads
+    // Populate the form with current round limits if PENDING
     useEffect(() => {
-        if (groupData && (!roundData || roundData.status === 'PENDING')) {
-            const pool = groupData.monthlyContribution * groupData.totalMembers;
-            setOpenForm({
-                minBid: pool * 0.05, // 5% default (Adjusted slightly for broader options)
-                maxBid: pool * 0.30, // 30% default
-                bidMultiple: 100     // 100 default
+        if (roundData && roundData.status === 'PENDING') {
+            setTermsForm({
+                minBid: roundData.minBid || '',
+                maxBid: roundData.maxBid || '',
+                bidMultiple: roundData.bidMultiple || '',
+                updateGroupDefaults: false
             });
         }
-    }, [groupData, roundData]);
+    }, [roundData]);
 
-    const handleOpenBidding = async (e) => {
+    const handleUpdateTerms = async (e) => {
         e.preventDefault();
+
+        if (Number(termsForm.minBid) >= Number(termsForm.maxBid)) {
+            alert("Minimum bid must be strictly less than the maximum bid.");
+            return;
+        }
+
         setActionLoading(true);
         try {
-            await adminApi.bidding.open({
-                groupId,
-                minBid: Number(openForm.minBid),
-                maxBid: Number(openForm.maxBid),
-                bidMultiple: Number(openForm.bidMultiple)
+            const res = await adminApi.bidding.updateTerms(roundData._id, {
+                minBid: Number(termsForm.minBid),
+                maxBid: Number(termsForm.maxBid),
+                bidMultiple: Number(termsForm.bidMultiple),
+                updateGroupDefaults: termsForm.updateGroupDefaults
             });
+
+            alert(res.data.message);
             fetchData();
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to open bidding");
+            alert(err.response?.data?.message || "Failed to update bidding terms");
         } finally {
             setActionLoading(false);
         }
@@ -202,24 +210,42 @@ const BiddingRoom = () => {
                             <h2>{formatCurrency(totalPool)}</h2>
                         </div>
 
-                        {(!roundData || roundData.status === 'PENDING') && groupData.currentMonth > 1 && (
+                        {/* UPDATE TERMS FORM (Only visible when PENDING) */}
+                        {roundData?.status === 'PENDING' && groupData.currentMonth > 1 && (
                             <div className="action-box setup-box">
-                                <h4><PlayCircle size={20} /> Setup Bidding Round</h4>
-                                <form onSubmit={handleOpenBidding}>
+                                <h4><Settings size={20} /> Update Bidding Terms</h4>
+                                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+                                    The round will open automatically. You can override the default constraints before it starts.
+                                </p>
+                                <form onSubmit={handleUpdateTerms}>
                                     <div className="form-group">
                                         <label>Min Bid Allowed (₹)</label>
-                                        <input type="number" value={openForm.minBid} onChange={e => setOpenForm({ ...openForm, minBid: e.target.value })} required />
+                                        <input type="number" value={termsForm.minBid} onChange={e => setTermsForm({ ...termsForm, minBid: e.target.value })} required />
                                     </div>
                                     <div className="form-group">
                                         <label>Max Bid Allowed (₹)</label>
-                                        <input type="number" value={openForm.maxBid} onChange={e => setOpenForm({ ...openForm, maxBid: e.target.value })} required />
+                                        <input type="number" value={termsForm.maxBid} onChange={e => setTermsForm({ ...termsForm, maxBid: e.target.value })} required />
                                     </div>
                                     <div className="form-group">
                                         <label>Bid Multiple (₹)</label>
-                                        <input type="number" value={openForm.bidMultiple} onChange={e => setOpenForm({ ...openForm, bidMultiple: e.target.value })} required />
+                                        <input type="number" value={termsForm.bidMultiple} onChange={e => setTermsForm({ ...termsForm, bidMultiple: e.target.value })} required />
                                     </div>
-                                    <button type="submit" className="elder-btn-success-solid full-width" disabled={actionLoading}>
-                                        {actionLoading ? 'Opening...' : 'Start Bidding Now'}
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', marginTop: '0.5rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            id="updateDefaults"
+                                            checked={termsForm.updateGroupDefaults}
+                                            onChange={(e) => setTermsForm({ ...termsForm, updateGroupDefaults: e.target.checked })}
+                                            style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                                        />
+                                        <label htmlFor="updateDefaults" style={{ margin: 0, fontSize: '0.9rem', color: '#334155', cursor: 'pointer' }}>
+                                            Save as default for future months
+                                        </label>
+                                    </div>
+
+                                    <button type="submit" className="elder-btn-primary full-width" disabled={actionLoading}>
+                                        {actionLoading ? 'Updating...' : 'Update Terms'}
                                     </button>
                                 </form>
                             </div>

@@ -34,5 +34,17 @@ router.get('/employee/notifications', authentication.authenticate, employeeContr
 //endpoint to save push subscription object
 router.post('/employee/push-subscription', authentication.authenticate, employeeController.saveEmployeePushSubscription);
 
+//endpoint to initiate cash transfer between employees
+router.post('/employee/cash-transfer', authentication.authenticate, employeeController.initiateCashTransfer);
+
+//endpoint to confirm a cash transfer
+router.patch('/employee/cash-transfer/:transferId/confirm', authentication.authenticate, employeeController.confirmCashTransfer);
+
+//endpoint to cancel a cash transfer
+router.patch('/employee/cash-transfer/:transferId/cancel', authentication.authenticate, employeeController.cancelCashTransfer);
+
+//endpoint to get inter employee transfer history
+router.get('/employee/cash-transfer/history', authentication.authenticate, employeeController.getCashTransferHistory);
+
 
 module.exports = router;

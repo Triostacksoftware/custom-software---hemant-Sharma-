@@ -105,5 +105,8 @@ router.post('/admin/collections/remind', authentication.authenticate, authentica
 //endpoint to update bid terms
 router.patch('/admin/bidding/update-terms/:roundId', authentication.authenticate, authentication.isAdmin, adminController.updateBidTerms);
 
+//endpoint to fetch cash in hand of employees
+router.get('/admin/employees/:employeeId/cash-in-hand', authentication.authenticate, authentication.isAdmin, adminController.getEmployeeCashInHand);
+
 
 module.exports = router;

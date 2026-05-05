@@ -38,6 +38,8 @@ export const adminApi = {
             api.get('/admin/employees/fetch_all', { params }),
         getHistory: (employeeId, params = {}) =>
             api.get(`/admin/employees/fetch/history/${employeeId}`, { params }),
+
+        getSingleCashInHand: (employeeId) => api.get(`/admin/employees/${employeeId}/cash-in-hand`),
     },
 
     // Bidding Actions
@@ -49,12 +51,13 @@ export const adminApi = {
             api.post('/admin/bidding/resolve-tie', data),
         finalize: (data) => api.post('/admin/bidding/finalize', data),
         getBids: (roundId) => api.get(`/admin/bidding/round/${roundId}/bids`),
+        updateTerms: (roundId, data) => api.patch(`/admin/bidding/update-terms/${roundId}`, data), // <-- NEW ENDPOINT
     },
 
     // Collection Management
     collections: {
         getPending: (params = {}) => api.get('/admin/collections/pending', { params }),
-        sendReminder: (data) => api.post('/admin/collections/remind', data), // <-- NEW ENDPOINT
+        sendReminder: (data) => api.post('/admin/collections/remind', data),
     },
 
     // Payout Management

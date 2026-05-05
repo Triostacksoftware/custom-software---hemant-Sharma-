@@ -539,17 +539,10 @@ async function checkAndAutoFinalizeAdminRound(round, io) {
                     status: "COMPLETED"
                 }
             },
-            {
-                $group: {
-                    _id: "$userId",
-                    totalPaid: { $sum: "$amount" }
-                }
-            }
+            { $group: { _id: "$userId", totalPaid: { $sum: "$amount" } } }
         ]);
 
-        const paidMap = new Map(
-            completedAgg.map(e => [e._id.toString(), e.totalPaid])
-        );
+        const paidMap = new Map(completedAgg.map(e => [e._id.toString(), e.totalPaid]));
 
         const allPaid = activeMembers.every(member => {
             const totalPaid = paidMap.get(member.userId.toString()) || 0;
@@ -558,7 +551,6 @@ async function checkAndAutoFinalizeAdminRound(round, io) {
 
         if (!allPaid) return false;
 
-        // All paid — finalize
         const now = new Date();
 
         await BiddingRound.findByIdAndUpdate(round._id, {
@@ -573,56 +565,95 @@ async function checkAndAutoFinalizeAdminRound(round, io) {
             groupDoc.status = "COMPLETED";
             await groupDoc.save();
 
-            // Notify all members — group cycle is complete
-            notifyGroupMembers(
-                group._id,
-                "Chit Group Completed 🎊",
+            notifyGroupMembers(group._id, "Chit Group Completed 🎊",
                 `"${group.name}" has completed its full cycle. Thank you for participating!`,
-                "GROUP_FINALIZED",
-                io
+                "GROUP_FINALIZED", io
             );
-
             return true;
         }
 
         await groupDoc.save();
 
-        // Create month 2 BiddingRound
-        const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         const totalPoolAmount = groupDoc.totalMembers * groupDoc.monthlyContribution;
 
-        await BiddingRound.create({
+        // CHANGED: check for auto-winner (edge case — 2-member group)
+        const membersNotWon = groupDoc.members.filter(m => !m.hasWon && m.status === "ACTIVE");
+
+        if (membersNotWon.length === 1) {
+            const defaultWinnerId = membersNotWon[0].userId;
+            const defaultPayable = groupDoc.monthlyContribution;
+            const defaultReceivable = groupDoc.members.length * groupDoc.monthlyContribution;
+
+            await BiddingRound.create({
+                groupId: groupDoc._id,
+                monthNumber: groupDoc.currentMonth,
+                status: "PAYMENT_OPEN",
+                totalPoolAmount,
+                winnerUserId: defaultWinnerId,
+                winningBidAmount: 0,
+                dividendPerMember: 0,
+                payablePerMember: defaultPayable,
+                winnerReceivableAmount: defaultReceivable,
+                isAdminRound: false,
+                scheduledBiddingDate: null
+            });
+
+            await Groups.updateOne(
+                { _id: groupDoc._id, "members.userId": defaultWinnerId },
+                { $set: { "members.$.hasWon": true, "members.$.winningMonth": groupDoc.currentMonth, "members.$.currentPaymentStatus": "PAID" } }
+            );
+            await Groups.updateOne(
+                { _id: groupDoc._id },
+                { $set: { "members.$[elem].currentPaymentStatus": "PENDING" } },
+                { arrayFilters: [{ "elem.userId": { $ne: defaultWinnerId } }] }
+            );
+
+            notifyMember(defaultWinnerId, "You're the Default Winner! 🏆",
+                `You are the last remaining member in "${group.name}" Month ${groupDoc.currentMonth}. You will receive ₹${defaultReceivable}.`,
+                "BIDDING_CLOSED", io, group._id
+            );
+            notifyGroupMembers(group._id, "Month 1 Complete — Final Month Open",
+                `All Month 1 contributions collected for "${group.name}". Month ${groupDoc.currentMonth} is the final round — payments are now open.`,
+                "GROUP_FINALIZED", io
+            );
+            notifyAdmins("Final Month — Collect & Pay",
+                `"${group.name}" is in its final month. Collect ₹${defaultPayable} from non-winner member(s) and pay ₹${defaultReceivable} to the default winner.`,
+                "GROUP_FINALIZED", io, group._id
+            );
+            return true;
+        }
+
+        // Normal flow: create PENDING round — copy defaultBidTerms from group
+        const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        const nextRound = await BiddingRound.create({
             groupId: groupDoc._id,
             monthNumber: groupDoc.currentMonth,
             status: "PENDING",
             totalPoolAmount,
             isAdminRound: false,
             scheduledBiddingDate,
-            minBid: 0,
-            maxBid: 0,
-            bidMultiple: 1
+            // CHANGED: was minBid:0, maxBid:0, bidMultiple:1
+            // Now copies group.defaultBidTerms so cron can auto-open at 5pm
+            minBid: groupDoc.defaultBidTerms?.minBid || 0,
+            maxBid: groupDoc.defaultBidTerms?.maxBid || 0,
+            bidMultiple: groupDoc.defaultBidTerms?.bidMultiple || 1
         });
 
-        // ── Notify all members — month 1 complete, bidding coming in 30 days ──
         const biddingDate = scheduledBiddingDate.toLocaleDateString("en-IN", {
             day: "2-digit", month: "short", year: "numeric"
         });
 
-        notifyGroupMembers(
-            group._id,
-            "Month 1 Complete! Bidding Coming Soon 🗓️",
+        notifyGroupMembers(group._id, "Month 1 Complete! Bidding Coming Soon 🗓️",
             `All contributions received for "${group.name}". Bidding for Month 2 is scheduled around ${biddingDate}.`,
-            "GROUP_FINALIZED",
-            io
+            "GROUP_FINALIZED", io
         );
 
-        // ── Notify admin — month 1 is done, next bidding needs to be set up ───
+        // CHANGED: message updated — terms already set, update only if needed
         notifyAdmins(
-            "Month 1 Complete — Set Up Bidding",
-            `All Month 1 contributions collected for "${group.name}". Bidding for Month 2 is scheduled around ${biddingDate}. Please set bid limits when ready.`,
-            "GROUP_FINALIZED",
-            io,
-            group._id
+            "Month 1 Complete — Bidding Scheduled",
+            `All Month 1 contributions collected for "${group.name}". Bidding for Month 2 auto-opens on ${biddingDate} at 5 PM with terms: Min ₹${nextRound.minBid}, Max ₹${nextRound.maxBid}, Step ₹${nextRound.bidMultiple}. Update terms before 5 PM if needed.`,
+            "GROUP_FINALIZED", io, group._id
         );
 
         return true;

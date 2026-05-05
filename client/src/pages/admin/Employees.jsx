@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Briefcase, ChevronLeft, ChevronRight, ArrowRight, X, ArrowUpRight, ArrowDownLeft, CalendarClock } from 'lucide-react';
+import { ArrowLeft, Search, Briefcase, ChevronLeft, ChevronRight, ArrowRight, X, ArrowUpRight, ArrowDownLeft, CalendarClock, Wallet } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
 import './Employees.css';
 
@@ -19,6 +19,10 @@ const Employees = () => {
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyData, setHistoryData] = useState([]);
     const [historyPagination, setHistoryPagination] = useState({ currentPage: 1, totalPages: 1, total: 0 });
+
+    // Cash in Hand States
+    const [employeeCash, setEmployeeCash] = useState(null);
+    const [cashLoading, setCashLoading] = useState(false);
 
     // Fetch Employees List (Default to Approved employees only)
     const fetchEmployees = useCallback(async (page = 1, search = '') => {
@@ -54,30 +58,51 @@ const Employees = () => {
         }
     };
 
-    // Fetch Specific Employee History
+    // Fetch Specific Employee History & Cash in Hand concurrently
     const fetchEmployeeHistory = async (employeeId, page = 1) => {
         setHistoryLoading(true);
-        try {
-            const response = await adminApi.employees.getHistory(employeeId, { page, limit: 10 });
-            if (response.data.success) {
-                setHistoryData(response.data.data.transactions);
-                setHistoryPagination(response.data.data.pagination);
+        if (page === 1) setCashLoading(true);
 
-                // If it's the first page load, set the employee data to open the panel
-                if (page === 1) {
-                    setSelectedEmployee(response.data.data.employee);
+        try {
+            if (page === 1) {
+                // Fetch both history and cash-in-hand concurrently for maximum speed
+                const [historyRes, cashRes] = await Promise.all([
+                    adminApi.employees.getHistory(employeeId, { page, limit: 10 }),
+                    adminApi.employees.getSingleCashInHand(employeeId).catch(() => ({ data: { success: false } })), // Graceful fail if cash fetch errors
+                ]);
+
+                if (historyRes.data.success) {
+                    setHistoryData(historyRes.data.data.transactions);
+                    setHistoryPagination(historyRes.data.data.pagination);
+                    setSelectedEmployee(historyRes.data.data.employee);
+                }
+
+                if (cashRes.data && cashRes.data.success) {
+                    setEmployeeCash(cashRes.data.data);
+                } else {
+                    setEmployeeCash(null);
+                }
+            } else {
+                // Only fetch history when paginating
+                const response = await adminApi.employees.getHistory(employeeId, { page, limit: 10 });
+                if (response.data.success) {
+                    setHistoryData(response.data.data.transactions);
+                    setHistoryPagination(response.data.data.pagination);
                 }
             }
         } catch (err) {
-            alert(err.response?.data?.message || 'Failed to load employee history.');
+            alert(err.response?.data?.message || 'Failed to load employee details.');
+            if (page === 1) closeHistoryPanel();
         } finally {
             setHistoryLoading(false);
+            setCashLoading(false);
         }
     };
 
     const closeHistoryPanel = () => {
         setSelectedEmployee(null);
         setHistoryData([]);
+        setEmployeeCash(null); // Clear cash data on close
     };
 
     const handleHistoryPageChange = (newPage) => {
@@ -89,7 +114,7 @@ const Employees = () => {
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('en-IN', {
             style: 'currency', currency: 'INR', maximumFractionDigits: 0
-        }).format(amount);
+        }).format(amount || 0);
     };
 
     const formatDateTime = (dateString) => {
@@ -238,6 +263,27 @@ const Employees = () => {
                         </div>
 
                         <div className="history-panel-body">
+
+                            {/* --- NEW CASH IN HAND CARD --- */}
+                            {cashLoading ? (
+                                <div className="elder-empty-card" style={{ padding: '1.5rem', minHeight: '80px', marginBottom: '1.5rem', border: '1px dashed #cbd5e1' }}>
+                                    <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+                                </div>
+                            ) : employeeCash && (
+                                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                    <div style={{ background: '#dcfce7', padding: '0.85rem', borderRadius: '12px', color: '#059669', flexShrink: 0 }}>
+                                        <Wallet size={28} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ margin: 0, fontSize: '0.9rem', color: '#15803d', fontWeight: '600' }}>Current Cash in Hand</p>
+                                        <h2 style={{ margin: '0.25rem 0 0 0', fontSize: '1.8rem', color: '#059669', fontWeight: '800' }}>
+                                            {formatCurrency(employeeCash.cashInHand)}
+                                        </h2>
+                                    </div>
+                                </div>
+                            )}
+                            {/* ----------------------------- */}
+
                             <h3 className="history-section-title">Activity Log</h3>
 
                             {historyLoading ? (

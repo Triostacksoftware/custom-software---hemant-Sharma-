@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FolderPlus, IndianRupee, Users, Calendar, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, FolderPlus, IndianRupee, Users, Calendar, Gavel, CheckCircle } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
 import './Groups.css';
 
@@ -11,8 +11,12 @@ const CreateGroup = () => {
         name: '',
         totalMembers: '',
         totalMonths: '',
-        monthlyContribution: ''
+        monthlyContribution: '',
+        minBid: '',
+        maxBid: '',
+        bidMultiple: ''
     });
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showConfirm, setShowConfirm] = useState(false);
@@ -41,6 +45,14 @@ const CreateGroup = () => {
             setError("Monthly contribution must be greater than zero.");
             return;
         }
+        if (Number(formData.minBid) >= Number(formData.maxBid)) {
+            setError("Minimum bid must be strictly less than the maximum bid.");
+            return;
+        }
+        if (Number(formData.bidMultiple) < 1) {
+            setError("Bid multiple must be at least 1.");
+            return;
+        }
 
         setError('');
         setShowConfirm(true); // Open the confirmation modal instead of submitting directly
@@ -56,7 +68,10 @@ const CreateGroup = () => {
                 name: formData.name,
                 totalMembers: Number(formData.totalMembers),
                 totalMonths: Number(formData.totalMonths),
-                monthlyContribution: Number(formData.monthlyContribution)
+                monthlyContribution: Number(formData.monthlyContribution),
+                minBid: Number(formData.minBid),
+                maxBid: Number(formData.maxBid),
+                bidMultiple: Number(formData.bidMultiple)
             };
             const response = await adminApi.groups.create(payload);
 
@@ -99,6 +114,8 @@ const CreateGroup = () => {
                     {error && <div className="error-alert">{error}</div>}
 
                     <form onSubmit={handleInitialSubmit} className="create-group-form">
+
+                        {/* Section 1: Basic Details */}
                         <div className="form-group">
                             <label>Group Name</label>
                             <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Diwali Bonanza Fund" required />
@@ -120,7 +137,29 @@ const CreateGroup = () => {
                             <input type="number" name="monthlyContribution" value={formData.monthlyContribution} onChange={handleChange} min="1" placeholder="e.g. 5000" required />
                         </div>
 
-                        <button type="submit" className="elder-btn-primary submit-btn" disabled={loading}>
+                        <hr className="form-divider" />
+
+                        {/* Section 2: Default Bidding Terms */}
+                        <h3 className="form-section-title"><Gavel size={18} /> Default Bidding Terms</h3>
+                        <p className="form-section-subtitle">These will act as the baseline fallback for automated bidding rounds.</p>
+
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Min Bid Allowed (₹)</label>
+                                <input type="number" name="minBid" value={formData.minBid} onChange={handleChange} min="1" placeholder="e.g. 500" required />
+                            </div>
+                            <div className="form-group">
+                                <label>Max Bid Allowed (₹)</label>
+                                <input type="number" name="maxBid" value={formData.maxBid} onChange={handleChange} min="2" placeholder="e.g. 15000" required />
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Bid Multiple (₹)</label>
+                            <input type="number" name="bidMultiple" value={formData.bidMultiple} onChange={handleChange} min="1" placeholder="e.g. 100" required />
+                        </div>
+
+                        <button type="submit" className="elder-btn-primary submit-btn mt-1" disabled={loading}>
                             {loading ? 'Processing...' : 'Review & Create Group'}
                         </button>
                     </form>
@@ -153,6 +192,15 @@ const CreateGroup = () => {
                             <div className="confirm-row highlight-row">
                                 <span>Total Group Pool:</span>
                                 <strong>{formatCurrency(formData.monthlyContribution * formData.totalMembers)} / mo</strong>
+                            </div>
+
+                            <div className="confirm-row" style={{ marginTop: '0.5rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.5rem' }}>
+                                <span>Default Limits:</span>
+                                <strong>{formatCurrency(formData.minBid)} - {formatCurrency(formData.maxBid)}</strong>
+                            </div>
+                            <div className="confirm-row">
+                                <span>Bid Multiple:</span>
+                                <strong>{formatCurrency(formData.bidMultiple)}</strong>
                             </div>
                         </div>
 

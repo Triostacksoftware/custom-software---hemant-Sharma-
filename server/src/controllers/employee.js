@@ -961,3 +961,345 @@ exports.saveEmployeePushSubscription = async (req, res, next) => {
         next(error);
     }
 };
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /employee/cash-transfer
+//
+// Employee A initiates a cash transfer to Employee B.
+// Creates a PENDING transfer and notifies B immediately.
+//
+// Body:
+//   toEmployeeId — ID of the receiving employee
+//   amount       — amount being handed over
+//   reason       — optional context (e.g. "Payout for Group X Month 3")
+// ─────────────────────────────────────────────────────────────────────────────
+exports.initiateCashTransfer = async (req, res, next) => {
+    try {
+        const fromEmployeeId = req.employee._id;
+        const { toEmployeeId, amount, reason } = req.body;
+
+        if (!toEmployeeId) {
+            return res.status(400).json({
+                success: false,
+                message: "toEmployeeId is required"
+            });
+        }
+
+        if (!amount || typeof amount !== "number" || amount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "amount must be a positive number"
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(toEmployeeId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid toEmployeeId"
+            });
+        }
+
+        // Cannot transfer to yourself
+        if (fromEmployeeId.toString() === toEmployeeId.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot initiate a transfer to yourself"
+            });
+        }
+
+        // Verify receiving employee exists and is approved
+        const toEmployee = await Employee.findById(toEmployeeId)
+            .select("name approvalStatus pushSubscription")
+            .lean();
+
+        if (!toEmployee) {
+            return res.status(404).json({
+                success: false,
+                message: "Receiving employee not found"
+            });
+        }
+
+        if (toEmployee.approvalStatus !== "APPROVED") {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot transfer to an unapproved employee"
+            });
+        }
+
+        const transfer = await CashTransfer.create({
+            fromEmployeeId,
+            toEmployeeId,
+            amount,
+            reason: reason?.trim() || null,
+            status: "PENDING"
+        });
+
+        // Notify the receiving employee
+        const io = req.app.get("io");
+        const senderName = req.employee.name;
+        const reasonText = reason ? ` Reason: ${reason}.` : "";
+
+        notifyEmployee(
+            toEmployeeId,
+            "Cash Transfer Incoming 💰",
+            `${senderName} has initiated a cash transfer of ₹${amount} to you.${reasonText} Please confirm receipt once you have the cash.`,
+            "PAYMENT_COLLECTION_REQUEST",
+            io
+        );
+
+        // Also emit real-time socket event so it appears instantly
+        io.to(`employee_${toEmployeeId}`).emit("newCashTransfer", {
+            transferId: transfer._id,
+            fromName: senderName,
+            amount,
+            reason: reason || null,
+            createdAt: transfer.createdAt
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: `Cash transfer of ₹${amount} initiated to ${toEmployee.name}. Waiting for confirmation.`,
+            data: {
+                transferId: transfer._id,
+                amount,
+                toEmployeeName: toEmployee.name,
+                status: "PENDING"
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /employee/cash-transfer/:transferId/confirm
+//
+// Employee B confirms they received the cash from Employee A.
+// Only the intended recipient can confirm.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.confirmCashTransfer = async (req, res, next) => {
+    try {
+        const employeeId = req.employee._id;
+        const { transferId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(transferId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid transfer ID"
+            });
+        }
+
+        const transfer = await CashTransfer.findById(transferId);
+
+        if (!transfer) {
+            return res.status(404).json({
+                success: false,
+                message: "Cash transfer not found"
+            });
+        }
+
+        // Only the intended recipient can confirm
+        if (transfer.toEmployeeId.toString() !== employeeId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: "Only the intended recipient can confirm this transfer"
+            });
+        }
+
+        if (transfer.status !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `Transfer cannot be confirmed. Current status: ${transfer.status}`
+            });
+        }
+
+        transfer.status = "CONFIRMED";
+        transfer.confirmedAt = new Date();
+        await transfer.save();
+
+        // Notify the sender that B has confirmed receipt
+        const io = req.app.get("io");
+        const receiverName = req.employee.name;
+
+        notifyEmployee(
+            transfer.fromEmployeeId,
+            "Cash Transfer Confirmed ✅",
+            `${receiverName} has confirmed receipt of ₹${transfer.amount}.${transfer.reason ? ` (${transfer.reason})` : ""}`,
+            "PAYMENT_CONFIRMED",
+            io
+        );
+
+        io.to(`employee_${transfer.fromEmployeeId}`).emit("cashTransferConfirmed", {
+            transferId: transfer._id,
+            amount: transfer.amount,
+            confirmedBy: receiverName,
+            confirmedAt: transfer.confirmedAt
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Cash transfer confirmed successfully",
+            data: {
+                transferId: transfer._id,
+                amount: transfer.amount,
+                status: "CONFIRMED",
+                confirmedAt: transfer.confirmedAt
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /employee/cash-transfer/:transferId/cancel
+//
+// Initiating employee (A) can cancel a PENDING transfer before B confirms.
+// Useful if the plan changes and the handoff is no longer needed.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.cancelCashTransfer = async (req, res, next) => {
+    try {
+        const employeeId = req.employee._id;
+        const { transferId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(transferId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid transfer ID"
+            });
+        }
+
+        const transfer = await CashTransfer.findById(transferId);
+
+        if (!transfer) {
+            return res.status(404).json({
+                success: false,
+                message: "Cash transfer not found"
+            });
+        }
+
+        // Only the initiator can cancel
+        if (transfer.fromEmployeeId.toString() !== employeeId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: "Only the initiating employee can cancel this transfer"
+            });
+        }
+
+        if (transfer.status !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `Transfer cannot be cancelled. Current status: ${transfer.status}`
+            });
+        }
+
+        transfer.status = "CANCELLED";
+        await transfer.save();
+
+        // Notify the recipient that the transfer was cancelled
+        const io = req.app.get("io");
+        const senderName = req.employee.name;
+
+        notifyEmployee(
+            transfer.toEmployeeId,
+            "Cash Transfer Cancelled",
+            `${senderName} has cancelled the cash transfer of ₹${transfer.amount}.`,
+            "PAYMENT_COLLECTION_REQUEST",
+            io
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Cash transfer cancelled",
+            data: { transferId: transfer._id, status: "CANCELLED" }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /employee/cash-transfers
+//
+// Returns the logged-in employee's full cash transfer history —
+// both transfers they initiated and transfers they received.
+// Sorted newest first.
+//
+// Query params:
+//   status — filter by "PENDING" | "CONFIRMED" | "CANCELLED"
+//   page   — default 1
+//   limit  — default 20, capped at 50
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getCashTransferHistory = async (req, res, next) => {
+    try {
+        const employeeId = req.employee._id;
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const skip = (page - 1) * limit;
+
+        const VALID_STATUSES = ["PENDING", "CONFIRMED", "CANCELLED"];
+
+        // Fetch transfers where this employee is either sender or receiver
+        const filter = {
+            $or: [
+                { fromEmployeeId: employeeId },
+                { toEmployeeId: employeeId }
+            ]
+        };
+
+        if (req.query.status && VALID_STATUSES.includes(req.query.status)) {
+            filter.status = req.query.status;
+        }
+
+        const [transfers, total] = await Promise.all([
+            CashTransfer.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate("fromEmployeeId", "name phoneNumber")
+                .populate("toEmployeeId", "name phoneNumber")
+                .lean(),
+            CashTransfer.countDocuments(filter)
+        ]);
+
+        // Shape — add direction field so frontend knows if this is money sent or received
+        const formatted = transfers.map(t => ({
+            _id: t._id,
+            direction: t.fromEmployeeId._id.toString() === employeeId.toString()
+                ? "SENT"
+                : "RECEIVED",
+            from: { _id: t.fromEmployeeId._id, name: t.fromEmployeeId.name, phone: t.fromEmployeeId.phoneNumber },
+            to: { _id: t.toEmployeeId._id, name: t.toEmployeeId.name, phone: t.toEmployeeId.phoneNumber },
+            amount: t.amount,
+            reason: t.reason,
+            status: t.status,
+            createdAt: t.createdAt,
+            confirmedAt: t.confirmedAt
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                transfers: formatted,
+                pagination: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit),
+                    hasNextPage: page * limit < total
+                }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};

@@ -11,6 +11,7 @@ const BiddingRound = require("../models/biddingRound.js");
 const Bid = require("../models/bid.js");
 const Ad = require("../models/ads.js");
 const Notification = require("../models/notification.js");
+const CashTransfer = require("../models/cashTransfer.js");
 
 const {
     notifyMember,
@@ -1370,40 +1371,10 @@ exports.openBidding = async (req, res, next) => {
     try {
         const { groupId, minBid, maxBid, bidMultiple } = req.body;
 
-        console.log("bidding constraints", req.body);
-
         if (!groupId) {
             return res.status(400).json({
                 success: false,
                 message: "Group ID is required"
-            });
-        }
-
-        if (minBid === undefined || maxBid === undefined || bidMultiple === undefined) {
-            return res.status(400).json({
-                success: false,
-                message: "minBid, maxBid and bidMultiple are required"
-            });
-        }
-
-        if (typeof minBid !== "number" || typeof maxBid !== "number" || typeof bidMultiple !== "number") {
-            return res.status(400).json({
-                success: false,
-                message: "minBid, maxBid and bidMultiple must be numbers"
-            });
-        }
-
-        if (minBid <= 0 || maxBid <= 0 || bidMultiple <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "minBid, maxBid and bidMultiple must be greater than zero"
-            });
-        }
-
-        if (minBid >= maxBid) {
-            return res.status(400).json({
-                success: false,
-                message: "minBid must be less than maxBid"
             });
         }
 
@@ -1437,11 +1408,7 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        const openRoundExists = await BiddingRound.findOne({
-            groupId,
-            status: "OPEN"
-        });
-
+        const openRoundExists = await BiddingRound.findOne({ groupId, status: "OPEN" });
         if (openRoundExists) {
             return res.status(400).json({
                 success: false,
@@ -1449,49 +1416,92 @@ exports.openBidding = async (req, res, next) => {
             });
         }
 
-        const now = new Date();
-        const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-
         const existingRound = await BiddingRound.findOne({
             groupId,
             monthNumber: group.currentMonth
         });
 
+        if (existingRound && existingRound.status !== "PENDING") {
+            return res.status(400).json({
+                success: false,
+                message: `Bidding for this month is already in '${existingRound.status}' state and cannot be reopened`
+            });
+        }
+
+        // ── Resolve bid terms ─────────────────────────────────────────────────
+        //
+        // Priority:
+        //   1. Explicit values in request body (manual override)
+        //   2. Terms already stored on the round (admin used update-terms endpoint)
+        //   3. Group's defaultBidTerms (set during group creation)
+        const resolvedMinBid = (typeof minBid === "number" && minBid > 0)
+            ? minBid
+            : (existingRound?.minBid > 0
+                ? existingRound.minBid
+                : group.defaultBidTerms?.minBid);
+
+        const resolvedMaxBid = (typeof maxBid === "number" && maxBid > 0)
+            ? maxBid
+            : (existingRound?.maxBid > 0
+                ? existingRound.maxBid
+                : group.defaultBidTerms?.maxBid);
+
+        const resolvedBidMultiple = (typeof bidMultiple === "number" && bidMultiple >= 1)
+            ? bidMultiple
+            : (existingRound?.bidMultiple > 1
+                ? existingRound.bidMultiple
+                : group.defaultBidTerms?.bidMultiple || 1);
+
+        // Validate resolved terms
+        if (!resolvedMinBid || !resolvedMaxBid || resolvedMinBid <= 0 || resolvedMaxBid <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Bid terms could not be resolved. Please update the round terms via PATCH /admin/bidding/update-terms/:roundId"
+            });
+        }
+
+        if (resolvedMinBid >= resolvedMaxBid) {
+            return res.status(400).json({
+                success: false,
+                message: "minBid must be less than maxBid. Please update the round terms."
+            });
+        }
+
+        // endedAt = 8:00 PM IST today (cron auto-closes at 8pm)
+        // Calculated as today 20:00 IST converted to UTC
+        const now = new Date();
+        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+        const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
+        const eightPmUTC = new Date(
+            Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 20, 0, 0)
+        );
+        const endedAt = new Date(eightPmUTC.getTime() - IST_OFFSET_MS);
+
         let biddingRound;
 
         if (existingRound) {
-            if (existingRound.status !== "PENDING") {
-                return res.status(400).json({
-                    success: false,
-                    message: `Bidding for this month is already in '${existingRound.status}' state and cannot be reopened`
-                });
-            }
-
             existingRound.status = "OPEN";
-            existingRound.minBid = minBid;
-            existingRound.maxBid = maxBid;
-            existingRound.bidMultiple = bidMultiple;
+            existingRound.minBid = resolvedMinBid;
+            existingRound.maxBid = resolvedMaxBid;
+            existingRound.bidMultiple = resolvedBidMultiple;
             existingRound.startedAt = now;
-            existingRound.endedAt = twoHoursLater;
+            existingRound.endedAt = endedAt;
             biddingRound = await existingRound.save();
-
         } else {
             const totalPoolAmount = group.totalMembers * group.monthlyContribution;
-
             biddingRound = await BiddingRound.create({
                 groupId,
                 monthNumber: group.currentMonth,
                 totalPoolAmount,
                 status: "OPEN",
-                minBid,
-                maxBid,
-                bidMultiple,
+                minBid: resolvedMinBid,
+                maxBid: resolvedMaxBid,
+                bidMultiple: resolvedBidMultiple,
                 startedAt: now,
-                endedAt: twoHoursLater
+                endedAt
             });
         }
 
-        // Emit socket event to bidding room
         const io = req.app.get("io");
         io.to(biddingRound._id.toString()).emit("biddingOpened", {
             biddingRoundId: biddingRound._id,
@@ -1502,27 +1512,9 @@ exports.openBidding = async (req, res, next) => {
             bidMultiple: biddingRound.bidMultiple
         });
 
-        // ── Notify all group members + all employees ──────────────────────────
-        //
-        // Members need to know bidding is live so they can enter the room.
-        // Employees need to know so they are aware of the ongoing session.
         const body = `Bidding is now live for "${group.name}" — Month ${group.currentMonth}. Bids close at 8 PM.`;
-
-        notifyGroupMembers(
-            group._id,
-            "Bidding is Live! 🔨",
-            body,
-            "BIDDING_OPEN",
-            io
-        );
-
-        notifyAllEmployees(
-            "Bidding is Live! 🔨",
-            body,
-            "BIDDING_OPEN",
-            io,
-            group._id
-        );
+        notifyGroupMembers(group._id, "Bidding is Live! 🔨", body, "BIDDING_OPEN", io);
+        notifyAllEmployees("Bidding is Live! 🔨", body, "BIDDING_OPEN", io, group._id);
 
         return res.status(200).json({
             success: true,
@@ -1536,6 +1528,18 @@ exports.openBidding = async (req, res, next) => {
                 bidMultiple: biddingRound.bidMultiple
             }
         });
+
+        // ── PREVIOUS MANUAL FLOW (commented out) ─────────────────────────────
+        // Admin was required to send minBid, maxBid, bidMultiple in the body
+        // every time they opened bidding. Now these are stored on the round
+        // from group creation (defaultBidTerms) and auto-opened by cron at 5pm.
+        //
+        // if (minBid === undefined || maxBid === undefined || bidMultiple === undefined) {
+        //     return res.status(400).json({ message: "minBid, maxBid and bidMultiple are required" });
+        // }
+        // ... strict validation of each field ...
+        // existingRound.minBid = minBid; existingRound.maxBid = maxBid; ...
+        // ─────────────────────────────────────────────────────────────────────
 
     } catch (error) {
         next(error);
@@ -1905,19 +1909,12 @@ exports.finalizeBidding = async (req, res, next) => {
         const { biddingRoundId } = req.body;
 
         if (!biddingRoundId) {
-            return res.status(400).json({
-                success: false,
-                message: "Bidding round ID is required"
-            });
+            return res.status(400).json({ success: false, message: "Bidding round ID is required" });
         }
 
         const round = await BiddingRound.findById(biddingRoundId);
-
         if (!round) {
-            return res.status(404).json({
-                success: false,
-                message: "Bidding round not found"
-            });
+            return res.status(404).json({ success: false, message: "Bidding round not found" });
         }
 
         if (round.status !== "PAYMENT_OPEN") {
@@ -1934,10 +1931,7 @@ exports.finalizeBidding = async (req, res, next) => {
             .lean();
 
         if (!group) {
-            return res.status(404).json({
-                success: false,
-                message: "Associated group not found"
-            });
+            return res.status(404).json({ success: false, message: "Associated group not found" });
         }
 
         const winnerId = round.winnerUserId.toString();
@@ -1975,10 +1969,8 @@ exports.finalizeBidding = async (req, res, next) => {
         activeMembers.forEach(member => {
             const memberId = member.userId._id.toString();
             if (memberId === winnerId) return;
-
             const completed = completedContributionMap.get(memberId) || 0;
             const remaining = payablePerMember - completed;
-
             if (remaining > 0) {
                 pendingMembers.push({
                     name: member.userId.name,
@@ -1992,11 +1984,8 @@ exports.finalizeBidding = async (req, res, next) => {
         });
 
         const winnerRemainingPayout = winnerReceivable - completedPayoutTotal;
-
         if (winnerRemainingPayout > 0) {
-            const winnerMember = activeMembers.find(
-                m => m.userId._id.toString() === winnerId
-            );
+            const winnerMember = activeMembers.find(m => m.userId._id.toString() === winnerId);
             if (winnerMember) {
                 pendingMembers.push({
                     name: winnerMember.userId.name,
@@ -2014,7 +2003,6 @@ exports.finalizeBidding = async (req, res, next) => {
         if (pendingMembers.length > 0) {
             const contributionPending = pendingMembers.filter(m => m.type === "CONTRIBUTION").length;
             const payoutPending = pendingMembers.filter(m => m.type === "WINNER_PAYOUT").length;
-
             const parts = [];
             if (contributionPending > 0) parts.push(`${contributionPending} member(s) have not fully paid their contribution`);
             if (payoutPending > 0) parts.push(`winner payout is incomplete`);
@@ -2022,9 +2010,7 @@ exports.finalizeBidding = async (req, res, next) => {
             notifyAdmins(
                 "Cannot Finalize — Payments Incomplete 🚫",
                 `"${group.name}" Month ${round.monthNumber} cannot be finalized: ${parts.join(" and ")}.`,
-                "FINALIZE_BLOCKED",
-                io,
-                group._id
+                "FINALIZE_BLOCKED", io, group._id
             );
 
             return res.status(400).json({
@@ -2034,7 +2020,6 @@ exports.finalizeBidding = async (req, res, next) => {
             });
         }
 
-        // ── All payments verified — finalize ──────────────────────────────────
         const now = new Date();
 
         const roundDoc = await BiddingRound.findById(biddingRoundId);
@@ -2044,11 +2029,8 @@ exports.finalizeBidding = async (req, res, next) => {
 
         const groupDoc = await Groups.findById(round.groupId);
         groupDoc.currentMonth += 1;
-        groupDoc.members.forEach(member => {
-            member.currentPaymentStatus = "PENDING";
-        });
+        groupDoc.members.forEach(m => { m.currentPaymentStatus = "PENDING"; });
 
-        // ── Group cycle complete ───────────────────────────────────────────────
         if (groupDoc.currentMonth > groupDoc.totalMonths) {
             groupDoc.status = "COMPLETED";
             await groupDoc.save();
@@ -2057,126 +2039,77 @@ exports.finalizeBidding = async (req, res, next) => {
                 group._id,
                 "Chit Group Completed 🎊",
                 `"${group.name}" has successfully completed its full cycle of ${group.totalMonths} months. Thank you for participating!`,
-                "GROUP_FINALIZED",
-                io
+                "GROUP_FINALIZED", io
             );
 
             return res.status(200).json({
                 success: true,
                 message: "Bidding finalized. Group cycle is now complete!",
-                data: {
-                    groupId: groupDoc._id,
-                    groupStatus: "COMPLETED",
-                    totalMonths: groupDoc.totalMonths
-                }
+                data: { groupId: groupDoc._id, groupStatus: "COMPLETED", totalMonths: groupDoc.totalMonths }
             });
         }
 
         await groupDoc.save();
 
-        // ── Create next month's BiddingRound ──────────────────────────────────
-        //
-        // After saving the group, check how many regular members have not won yet.
-        // members[] contains only regular users (admin is never in this array).
-        // If exactly ONE member hasn't won → they are the automatic winner for
-        // the next month. No bidding needed. Set the round directly to PAYMENT_OPEN.
-        //
-        // If more than one hasn't won → normal bidding flow, create as PENDING.
         const totalPoolAmount = groupDoc.totalMembers * groupDoc.monthlyContribution;
         const membersNotWon = groupDoc.members.filter(m => !m.hasWon && m.status === "ACTIVE");
 
+        // Auto-winner: only one regular member left — no bidding needed
         if (membersNotWon.length === 1) {
-            // ── AUTO-WINNER: last remaining member wins by default ─────────────
-            const defaultWinner = membersNotWon[0];
-            const defaultWinnerId = defaultWinner.userId;
-
-            // No bid placed → no dividend → payable = full monthlyContribution
-            // winnerReceivable = totalPool - 0 (winningBid) - monthlyContribution (admin implicit)
-            // = (totalMembers - 1) × monthlyContribution
-            // = groupDoc.members.length × monthlyContribution
-            // e.g. 3 members: (3-1) × 40,000 = ₹80,000
-            const defaultPayable = groupDoc.monthlyContribution;  // full — no dividend
+            const defaultWinnerId = membersNotWon[0].userId;
+            const defaultPayable = groupDoc.monthlyContribution;
             const defaultReceivable = groupDoc.members.length * groupDoc.monthlyContribution;
 
             const nextRound = await BiddingRound.create({
                 groupId: groupDoc._id,
                 monthNumber: groupDoc.currentMonth,
-                status: "PAYMENT_OPEN",   // skip PENDING — no bidding needed
+                status: "PAYMENT_OPEN",
                 totalPoolAmount,
                 winnerUserId: defaultWinnerId,
-                winningBidAmount: 0,                // no bid placed
-                dividendPerMember: 0,                // no dividend — no winning bid
+                winningBidAmount: 0,
+                dividendPerMember: 0,
                 payablePerMember: defaultPayable,
                 winnerReceivableAmount: defaultReceivable,
                 isAdminRound: false,
-                scheduledBiddingDate: null              // no bidding scheduled
+                scheduledBiddingDate: null
             });
 
-            // Mark default winner in group
             await Groups.updateOne(
                 { _id: groupDoc._id, "members.userId": defaultWinnerId },
-                {
-                    $set: {
-                        "members.$.hasWon": true,
-                        "members.$.winningMonth": groupDoc.currentMonth,
-                        "members.$.currentPaymentStatus": "PAID"
-                    }
-                }
+                { $set: { "members.$.hasWon": true, "members.$.winningMonth": groupDoc.currentMonth, "members.$.currentPaymentStatus": "PAID" } }
             );
-
-            // Set non-winners to PENDING
             await Groups.updateOne(
                 { _id: groupDoc._id },
                 { $set: { "members.$[elem].currentPaymentStatus": "PENDING" } },
                 { arrayFilters: [{ "elem.userId": { $ne: defaultWinnerId } }] }
             );
 
-            // Notify winner — they win by default
-            notifyMember(
-                defaultWinnerId,
-                "You're the Default Winner! 🏆",
+            notifyMember(defaultWinnerId, "You're the Default Winner! 🏆",
                 `You are the last remaining member in "${group.name}" Month ${groupDoc.currentMonth}. You will receive ₹${defaultReceivable}. Please await your payout.`,
-                "BIDDING_CLOSED",
-                io,
-                group._id
+                "BIDDING_CLOSED", io, group._id
             );
-
-            // Notify all members — final month, no bidding
-            notifyGroupMembers(
-                group._id,
-                `Month ${round.monthNumber} Complete — Final Month Open`,
+            notifyGroupMembers(group._id, `Month ${round.monthNumber} Complete — Final Month Open`,
                 `Month ${round.monthNumber} payments are done for "${group.name}". Month ${groupDoc.currentMonth} is the final round — no bidding needed. Payments are now open.`,
-                "GROUP_FINALIZED",
-                io
+                "GROUP_FINALIZED", io
             );
-
-            // Notify admin
-            notifyAdmins(
-                `Final Month — Collect & Pay`,
+            notifyAdmins(`Final Month — Collect & Pay`,
                 `"${group.name}" is in its final month (Month ${groupDoc.currentMonth}). Collect ₹${defaultPayable} from non-winner member(s) and pay ₹${defaultReceivable} to the default winner.`,
-                "GROUP_FINALIZED",
-                io,
-                group._id
+                "GROUP_FINALIZED", io, group._id
             );
 
             return res.status(200).json({
                 success: true,
                 message: "Bidding finalized. Final month auto-configured — no bidding needed.",
                 data: {
-                    groupId: groupDoc._id,
-                    finalizedRoundId: roundDoc._id,
-                    nextMonth: groupDoc.currentMonth,
-                    groupStatus: groupDoc.status,
-                    totalMonths: groupDoc.totalMonths,
-                    nextRoundId: nextRound._id,
-                    autoWinner: true,
-                    defaultWinnerId,
-                    winnerReceivable: defaultReceivable
+                    groupId: groupDoc._id, finalizedRoundId: roundDoc._id,
+                    nextMonth: groupDoc.currentMonth, groupStatus: groupDoc.status,
+                    totalMonths: groupDoc.totalMonths, nextRoundId: nextRound._id,
+                    autoWinner: true, defaultWinnerId, winnerReceivable: defaultReceivable
                 }
             });
         }
 
-        // ── Normal flow: multiple members haven't won — create PENDING round ───
+        // Normal flow: create PENDING round — copy defaultBidTerms from group
         const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
         const nextRound = await BiddingRound.create({
@@ -2186,29 +2119,27 @@ exports.finalizeBidding = async (req, res, next) => {
             totalPoolAmount,
             isAdminRound: false,
             scheduledBiddingDate,
-            minBid: 0,
-            maxBid: 0,
-            bidMultiple: 1
+            // CHANGED: was minBid:0, maxBid:0, bidMultiple:1
+            // Now copies group.defaultBidTerms so cron can auto-open at 5pm
+            minBid: groupDoc.defaultBidTerms?.minBid || 0,
+            maxBid: groupDoc.defaultBidTerms?.maxBid || 0,
+            bidMultiple: groupDoc.defaultBidTerms?.bidMultiple || 1
         });
 
         const biddingDate = scheduledBiddingDate.toLocaleDateString("en-IN", {
             day: "2-digit", month: "short", year: "numeric"
         });
 
-        notifyGroupMembers(
-            group._id,
-            `Month ${round.monthNumber} Complete! 🎉`,
+        notifyGroupMembers(group._id, `Month ${round.monthNumber} Complete! 🎉`,
             `All payments for "${group.name}" Month ${round.monthNumber} are done. Bidding for Month ${groupDoc.currentMonth} is scheduled around ${biddingDate}.`,
-            "GROUP_FINALIZED",
-            io
+            "GROUP_FINALIZED", io
         );
 
+        // CHANGED: message now says terms are already set, update only if needed
         notifyAdmins(
-            `Month ${round.monthNumber} Finalized — Set Up Next Bidding`,
-            `"${group.name}" Month ${round.monthNumber} is finalized. Bidding for Month ${groupDoc.currentMonth} is scheduled around ${biddingDate}. Please set bid limits when ready.`,
-            "GROUP_FINALIZED",
-            io,
-            group._id
+            `Month ${round.monthNumber} Finalized — Bidding Scheduled`,
+            `"${group.name}" Month ${round.monthNumber} is finalized. Bidding for Month ${groupDoc.currentMonth} auto-opens on ${biddingDate} at 5 PM with terms: Min ₹${nextRound.minBid}, Max ₹${nextRound.maxBid}, Step ₹${nextRound.bidMultiple}. Update terms before 5 PM if needed.`,
+            "GROUP_FINALIZED", io, group._id
         );
 
         return res.status(200).json({
@@ -3301,6 +3232,125 @@ exports.updateBidTerms = async (req, res, next) => {
                 minBid,
                 maxBid,
                 bidMultiple
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// controller to get current cash in hand of an approved employee.
+exports.getEmployeeCashInHand = async (req, res, next) => {
+    try {
+        const { employeeId } = req.params;
+
+        // 1. Validate ObjectId
+        if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid employee ID"
+            });
+        }
+
+        const employeeObjId = new mongoose.Types.ObjectId(employeeId);
+
+        // 2. Fetch the employee details to ensure they exist (Added "role" to select)
+        const employee = await Employee.findById(employeeId)
+            .select("name phoneNumber approvalStatus role")
+            .lean();
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found"
+            });
+        }
+
+        // 3. Ensure it's an approved employee only, not an admin
+        if (employee.approvalStatus !== "APPROVED" || employee.role !== "EMPLOYEE") {
+            return res.status(403).json({
+                success: false,
+                message: "Employee not authorized"
+            });
+        }
+
+        // 4. Run all four aggregations in parallel specifically for this employee
+        const [
+            collectedAgg,
+            paidOutAgg,
+            transfersSentAgg,
+            transfersReceivedAgg
+        ] = await Promise.all([
+            // Total COMPLETED contributions this employee collected
+            Transaction.aggregate([
+                {
+                    $match: {
+                        handledBy: employeeObjId,
+                        type: "CONTRIBUTION",
+                        status: "COMPLETED"
+                    }
+                },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]),
+
+            // Total COMPLETED winner payouts this employee paid out
+            Transaction.aggregate([
+                {
+                    $match: {
+                        handledBy: employeeObjId,
+                        type: "WINNER_PAYOUT",
+                        status: "COMPLETED"
+                    }
+                },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]),
+
+            // Total CONFIRMED cash this employee sent to others
+            CashTransfer.aggregate([
+                {
+                    $match: {
+                        fromEmployeeId: employeeObjId,
+                        status: "CONFIRMED"
+                    }
+                },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ]),
+
+            // Total CONFIRMED cash this employee received from others
+            CashTransfer.aggregate([
+                {
+                    $match: {
+                        toEmployeeId: employeeObjId,
+                        status: "CONFIRMED"
+                    }
+                },
+                { $group: { _id: null, total: { $sum: "$amount" } } }
+            ])
+        ]);
+
+        // 5. Extract totals safely and handle large numbers/precision
+        const collected = Number(collectedAgg[0]?.total || 0);
+        const paidOut = Number(paidOutAgg[0]?.total || 0);
+        const transfersSent = Number(transfersSentAgg[0]?.total || 0);
+        const transfersReceived = Number(transfersReceivedAgg[0]?.total || 0);
+
+        // 6. Calculate net cash in hand safely, forcing precision to prevent floating-point errors
+        const rawCashInHand = collected - paidOut - transfersSent + transfersReceived;
+        const cashInHand = Math.max(0, Number(rawCashInHand.toFixed(2)));
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                _id: employee._id,
+                name: employee.name,
+                phoneNumber: employee.phoneNumber,
+                collected,            // total contributions collected
+                paidOut,              // total winner payouts made
+                transfersSent,        // cash handed to other employees
+                transfersReceived,    // cash received from other employees
+                cashInHand            // net physical cash in hand right now
             }
         });
 
