@@ -274,6 +274,121 @@
     line-height: 1.5;
 }
 
+/* =========================================
+   === SCHEDULED BANNER & TERMS UI ===
+   ========================================= */
+
+.scheduled-banner {
+    background-color: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.scheduled-icon {
+    background-color: #eff6ff;
+    color: #3b82f6;
+    padding: 0.85rem;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.scheduled-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.scheduled-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.35rem;
+}
+
+.scheduled-label {
+    margin: 0 !important;
+    /* overrides .action-box p */
+    color: #64748b !important;
+    font-size: 0.85rem !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.terms-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.badge-default {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-custom {
+    background: #e0e7ff;
+    color: #4338ca;
+    border: 1px solid #c7d2fe;
+}
+
+.scheduled-date {
+    margin: 0;
+    color: #1e293b;
+    font-size: 1.1rem;
+    font-weight: 800;
+}
+
+.setup-hint {
+    font-size: 0.85rem !important;
+    color: #64748b !important;
+    margin-bottom: 1.25rem !important;
+}
+
+.default-terms-info {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #f1f5f9;
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+    border-left: 4px solid #94a3b8;
+    margin-bottom: 1.5rem;
+    color: #475569;
+    font-size: 0.9rem;
+}
+
+.default-terms-info span {
+    display: flex;
+    align-items: center;
+}
+
+.default-terms-info strong {
+    color: #334155;
+    margin-right: 0.4rem;
+}
+
+
+/* =========================================
+   === LIVE BIDDING INDICATORS ===
+   ========================================= */
+
 .live-indicator {
     background: #fee2e2;
     color: #b91c1c;
@@ -410,7 +525,9 @@
     /* Prevents button from shrinking */
 }
 
-/* === LIVE FEED === */
+/* =========================================
+   === LIVE FEED ===
+   ========================================= */
 .room-feed-panel {
     background: white;
     border-radius: 16px;
@@ -504,7 +621,9 @@
     color: #d97706;
 }
 
-/* === RESPONSIVE === */
+/* =========================================
+   === RESPONSIVE ===
+   ========================================= */
 @media (max-width: 900px) {
     .room-layout {
         grid-template-columns: 1fr;
@@ -529,7 +648,7 @@
     }
 }
 
-/* Fix for mobile overlapping tie rows */
+/* Fix for mobile overlapping elements */
 @media (max-width: 480px) {
     .tie-row {
         flex-direction: column;
@@ -539,5 +658,12 @@
 
     .tie-row button {
         width: 100%;
+    }
+
+    .scheduled-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
     }
 }

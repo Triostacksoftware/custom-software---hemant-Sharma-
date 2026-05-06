@@ -625,6 +625,8 @@ async function checkAndAutoFinalizeAdminRound(round, io) {
 
         // Normal flow: create PENDING round — copy defaultBidTerms from group
         const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        // 11:30:00.000 AM UTC strictly translates to 5:00 PM IST
+        scheduledBiddingDate.setUTCHours(11, 30, 0, 0);
 
         const nextRound = await BiddingRound.create({
             groupId: groupDoc._id,

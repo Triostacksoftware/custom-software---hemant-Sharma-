@@ -33,6 +33,7 @@ import BiddingRoom from './pages/admin/BiddingRoom';
 import EmployeeDashboard from './pages/employee/Dashboard';
 import LogContribution from './pages/employee/LogContribution';
 import TransactionHistory from './pages/employee/TransactionHistory';
+import CashTransfers from './pages/employee/CashTransfers';
 
 // === Member Pages ===
 import MemberDashboard from './pages/member/Dashboard';
@@ -191,6 +192,14 @@ function App() {
                             <EmployeeRoute>
                                 <EmployeeLayout>
                                     <TransactionHistory />
+                                </EmployeeLayout>
+                            </EmployeeRoute>
+                        } />
+
+                        <Route path="/employee/cash-transfers" element={
+                            <EmployeeRoute>
+                                <EmployeeLayout>
+                                    <CashTransfers />
                                 </EmployeeLayout>
                             </EmployeeRoute>
                         } />

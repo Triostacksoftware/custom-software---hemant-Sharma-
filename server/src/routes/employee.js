@@ -34,6 +34,9 @@ router.get('/employee/notifications', authentication.authenticate, employeeContr
 //endpoint to save push subscription object
 router.post('/employee/push-subscription', authentication.authenticate, employeeController.saveEmployeePushSubscription);
 
+// endpoint to fetch approved employees for the cash transfer dropdown
+router.get('/employee/transfer-directory', authentication.authenticate, employeeController.getApprovedEmployeesForTransfer);
+
 //endpoint to initiate cash transfer between employees
 router.post('/employee/cash-transfer', authentication.authenticate, employeeController.initiateCashTransfer);
 

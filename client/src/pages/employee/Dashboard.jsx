@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { employeeApi } from '../../api/employeeApi';
-import BellNotification from '../../components/common/BellNotification'; // <-- NEW IMPORT
-import { LogOut, IndianRupee, TrendingDown, TrendingUp, Send, Filter, History, Clock } from 'lucide-react';
+import BellNotification from '../../components/common/BellNotification';
+import { LogOut, IndianRupee, TrendingDown, TrendingUp, Send, Filter, History, Clock, Wallet, ArrowRight, ChevronDown, CheckCircle } from 'lucide-react';
 import logo from '../../assets/images/logo.png';
 import './Dashboard.css';
 
 const EmployeeDashboard = () => {
     const { user, logout } = useAuth();
+    const navigate = useNavigate();
     const [currentTime, setCurrentTime] = useState(new Date());
     const [loading, setLoading] = useState(true);
 
@@ -21,15 +23,21 @@ const EmployeeDashboard = () => {
     const [pendingPayouts, setPendingPayouts] = useState([]);
     const [listLoading, setListLoading] = useState(false);
 
+    // Custom Dropdown State
+    const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
+
     // History States
     const [history, setHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
 
-    // Modal State
+    // Modal States
     const [actionModal, setActionModal] = useState({ show: false, record: null });
     const [paymentMode, setPaymentMode] = useState('CASH');
     const [customAmount, setCustomAmount] = useState('');
     const [actionProcessing, setActionProcessing] = useState(false);
+
+    // NEW: Success Modal State
+    const [successModal, setSuccessModal] = useState({ show: false, message: '' });
 
     // --- Timers & Initial Loads ---
     useEffect(() => {
@@ -130,9 +138,11 @@ const EmployeeDashboard = () => {
             };
 
             await employeeApi.initiateTransaction(payload);
-            alert("Request sent to member's app! Waiting for their confirmation.");
 
+            // Close action modal and show sleek success modal instead of alert
             setActionModal({ show: false, record: null });
+            setSuccessModal({ show: true, message: "Request sent to member's app! Waiting for their confirmation." });
+
             fetchPendingLists(selectedGroupId);
             fetchHistory(1);
 
@@ -144,6 +154,8 @@ const EmployeeDashboard = () => {
     };
 
     const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
+
+    const selectedGroupObj = activeGroups.find(g => g._id === selectedGroupId);
 
     if (loading) return <div className="emp-dash-wrapper center-content"><div className="spinner"></div></div>;
 
@@ -158,10 +170,7 @@ const EmployeeDashboard = () => {
                     <img src={logo} alt="Logo" className="center-logo" style={{ height: '40px' }} />
                 </div>
                 <div className="header-right">
-
-                    {/* === CLEANED UP NOTIFICATION COMPONENT === */}
                     <BellNotification api={employeeApi} />
-
                     <div className="user-profile-section">
                         <span className="welcome-text">Agent: {user?.name || 'Employee'}</span>
                         <button className="icon-btn logout-btn" onClick={logout} title="Logout"><LogOut size={22} /></button>
@@ -202,19 +211,55 @@ const EmployeeDashboard = () => {
                     </div>
                 </div>
 
-                {/* Group Filter */}
+                {/* === CUSTOM GROUP FILTER DROPDOWN === */}
                 <div className="emp-filter-bar">
                     <Filter size={20} className="text-slate" />
-                    <select value={selectedGroupId} onChange={(e) => setSelectedGroupId(e.target.value)} className="emp-group-select">
-                        {activeGroups.length === 0 ? <option value="">No Active Groups</option> : null}
-                        {activeGroups.map(g => (
-                            <option key={g._id} value={g._id}>{g.name} (Month {g.currentMonth})</option>
-                        ))}
-                    </select>
+                    <div className="custom-dropdown-container" style={{ width: '300px', maxWidth: '100%', marginLeft: '0.5rem' }}>
+                        <div
+                            className={`custom-dropdown-trigger filter-trigger ${groupDropdownOpen ? 'open' : ''}`}
+                            onClick={() => setGroupDropdownOpen(!groupDropdownOpen)}
+                        >
+                            {selectedGroupObj ? (
+                                <div className="selected-emp-display">
+                                    <span className="selected-emp-name">
+                                        {selectedGroupObj.name} <span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: '500' }}>(Month {selectedGroupObj.currentMonth})</span>
+                                    </span>
+                                </div>
+                            ) : (
+                                <span className="placeholder-text">-- Select Active Group --</span>
+                            )}
+                            <ChevronDown size={18} className={`dropdown-arrow ${groupDropdownOpen ? 'rotated' : ''}`} />
+                        </div>
+
+                        {groupDropdownOpen && (
+                            <div className="custom-dropdown-menu">
+                                {activeGroups.length === 0 ? (
+                                    <div className="dropdown-empty">No active groups available.</div>
+                                ) : (
+                                    activeGroups.map(g => (
+                                        <div
+                                            key={g._id}
+                                            className={`custom-dropdown-item ${selectedGroupId === g._id ? 'selected' : ''}`}
+                                            onClick={() => {
+                                                setSelectedGroupId(g._id);
+                                                setGroupDropdownOpen(false);
+                                            }}
+                                        >
+                                            <div className="emp-drop-info">
+                                                <h4>{g.name}</h4>
+                                                <span>Month {g.currentMonth}</span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                {/* Lists Grid */}
+                {/* Lists Grid (Compact Design) */}
                 <div className="emp-lists-grid">
+
                     {/* Collection List */}
                     <div className="emp-list-container">
                         <div className="list-header">
@@ -225,19 +270,19 @@ const EmployeeDashboard = () => {
                             {listLoading ? <div className="spinner small-spinner"></div> : pendingCollections.length === 0 ? (
                                 <p className="empty-text">All collections complete for this group.</p>
                             ) : pendingCollections.map(member => (
-                                <div key={member.memberId} className="emp-task-card">
-                                    <div className="task-info">
-                                        <h4>{member.memberName}</h4>
-                                        <p className="task-meta">Pending: <strong className="text-red">{formatCurrency(member.remainingAmount)}</strong></p>
+                                <div key={member.memberId} className="compact-task-row">
+                                    <div className="task-info-compact">
+                                        <span className="member-name-compact">{member.memberName}</span>
+                                        <span className="task-meta-compact text-red">Pending: {formatCurrency(member.remainingAmount)}</span>
                                     </div>
-                                    <div className="task-actions">
+                                    <div className="task-actions-compact">
                                         {member.pendingConfirmations?.length > 0 ? (
-                                            <button className="emp-btn-waiting" disabled>
-                                                <Clock size={16} /> Awaiting Member
+                                            <button className="compact-action-btn compact-btn-waiting" disabled>
+                                                <Clock size={14} /> Wait
                                             </button>
                                         ) : (
-                                            <button className="emp-btn-initiate" onClick={() => openActionModal(member, 'CONTRIBUTION')}>
-                                                <Send size={16} /> Request
+                                            <button className="compact-action-btn compact-btn-initiate" onClick={() => openActionModal(member, 'CONTRIBUTION')}>
+                                                <Send size={14} /> Request
                                             </button>
                                         )}
                                     </div>
@@ -256,19 +301,19 @@ const EmployeeDashboard = () => {
                             {listLoading ? <div className="spinner small-spinner"></div> : pendingPayouts.length === 0 ? (
                                 <p className="empty-text">No pending payouts for this group.</p>
                             ) : pendingPayouts.map(winner => (
-                                <div key={winner.memberId} className="emp-task-card payout-task">
-                                    <div className="task-info">
-                                        <h4>{winner.memberName} 👑</h4>
-                                        <p className="task-meta">Owed: <strong className="text-emerald">{formatCurrency(winner.remainingAmount)}</strong></p>
+                                <div key={winner.memberId} className="compact-task-row payout-row">
+                                    <div className="task-info-compact">
+                                        <span className="member-name-compact">{winner.memberName} 👑</span>
+                                        <span className="task-meta-compact text-emerald">Owed: {formatCurrency(winner.remainingAmount)}</span>
                                     </div>
-                                    <div className="task-actions">
+                                    <div className="task-actions-compact">
                                         {winner.pendingConfirmations?.length > 0 ? (
-                                            <button className="emp-btn-waiting" disabled>
-                                                <Clock size={16} /> Awaiting Member
+                                            <button className="compact-action-btn compact-btn-waiting" disabled>
+                                                <Clock size={14} /> Wait
                                             </button>
                                         ) : (
-                                            <button className="emp-btn-initiate-payout" onClick={() => openActionModal(winner, 'WINNER_PAYOUT')}>
-                                                <Send size={16} /> Initiate
+                                            <button className="compact-action-btn compact-btn-payout" onClick={() => openActionModal(winner, 'WINNER_PAYOUT')}>
+                                                <Send size={14} /> Initiate
                                             </button>
                                         )}
                                     </div>
@@ -276,6 +321,22 @@ const EmployeeDashboard = () => {
                             ))}
                         </div>
                     </div>
+                </div>
+
+                {/* === WALLET BANNER === */}
+                <div className="emp-wallet-banner" onClick={() => navigate('/employee/cash-transfers')}>
+                    <div className="wallet-banner-left">
+                        <div className="wallet-banner-icon">
+                            <Wallet size={32} />
+                        </div>
+                        <div className="wallet-banner-info">
+                            <h2>Cash Management Hub</h2>
+                            <p>Transfer physical cash to other employees or confirm received funds.</p>
+                        </div>
+                    </div>
+                    <button className="wallet-banner-btn">
+                        Open Wallet <ArrowRight size={18} />
+                    </button>
                 </div>
 
                 {/* Transaction History Table */}
@@ -372,6 +433,30 @@ const EmployeeDashboard = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Success Popup Modal */}
+            {successModal.show && (
+                <div className="emp-modal-overlay">
+                    <div className="emp-modal-card confirm-dialog-card">
+                        <div className="confirm-icon-wrapper bg-emerald-light text-emerald">
+                            <CheckCircle size={36} />
+                        </div>
+                        <h3>Success!</h3>
+                        <p>{successModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                type="button"
+                                className="emp-btn-primary btn-success-fill"
+                                onClick={() => setSuccessModal({ show: false, message: '' })}
+                                style={{ width: '100%' }}
+                            >
+                                Done
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

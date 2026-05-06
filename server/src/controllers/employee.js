@@ -8,6 +8,7 @@ const Transaction = require("../models/transaction.js");
 const User = require("../models/user.js");
 const BiddingRound = require("../models/biddingRound.js");
 const Notification = require("../models/notification.js");
+const CashTransfer = require("../models/cashTransfer.js");
 
 const {
     notifyMember,
@@ -1296,6 +1297,34 @@ exports.getCashTransferHistory = async (req, res, next) => {
                     totalPages: Math.ceil(total / limit),
                     hasNextPage: page * limit < total
                 }
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// Controller to get a list of approved employees (excluding the current user) for cash transfers
+exports.getApprovedEmployeesForTransfer = async (req, res, next) => {
+    try {
+        const currentEmployeeId = req.employee._id;
+
+        // Fetch approved employees, excluding admins and the current user
+        const employees = await Employee.find({
+            approvalStatus: "APPROVED",
+            role: "EMPLOYEE",
+            _id: { $ne: currentEmployeeId }
+        })
+            .select("_id name phoneNumber")
+            .sort({ name: 1 }) // Sort alphabetically for easy dropdown navigation
+            .lean();
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                employees
             }
         });
 

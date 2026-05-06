@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Gavel, Settings, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Settings, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle, Calendar, Info } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { adminApi } from '../../api/adminApi';
 import './Bidding.css';
@@ -93,7 +93,7 @@ const BiddingRoom = () => {
         };
     }, [roundData?._id]);
 
-    // Populate the form with current round limits if PENDING
+    // Populate the form with current resolved round limits if PENDING
     useEffect(() => {
         if (roundData && roundData.status === 'PENDING') {
             setTermsForm({
@@ -181,6 +181,19 @@ const BiddingRoom = () => {
 
     const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
 
+    const formatScheduleDate = (dateString) => {
+        if (!dateString) return "Date not set";
+        return new Date(dateString).toLocaleString('en-IN', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+    };
+
     if (loading) return <div className="admin-bidding-container center-content"><div className="spinner"></div></div>;
     if (!groupData) return <div className="admin-bidding-container center-content"><p>Group not found.</p></div>;
 
@@ -210,102 +223,135 @@ const BiddingRoom = () => {
                             <h2>{formatCurrency(totalPool)}</h2>
                         </div>
 
-                        {/* UPDATE TERMS FORM (Only visible when PENDING) */}
-                        {roundData?.status === 'PENDING' && groupData.currentMonth > 1 && (
-                            <div className="action-box setup-box">
-                                <h4><Settings size={20} /> Update Bidding Terms</h4>
-                                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
-                                    The round will open automatically. You can override the default constraints before it starts.
-                                </p>
-                                <form onSubmit={handleUpdateTerms}>
-                                    <div className="form-group">
-                                        <label>Min Bid Allowed (₹)</label>
-                                        <input type="number" value={termsForm.minBid} onChange={e => setTermsForm({ ...termsForm, minBid: e.target.value })} required />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Max Bid Allowed (₹)</label>
-                                        <input type="number" value={termsForm.maxBid} onChange={e => setTermsForm({ ...termsForm, maxBid: e.target.value })} required />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Bid Multiple (₹)</label>
-                                        <input type="number" value={termsForm.bidMultiple} onChange={e => setTermsForm({ ...termsForm, bidMultiple: e.target.value })} required />
-                                    </div>
-
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', marginTop: '0.5rem' }}>
-                                        <input
-                                            type="checkbox"
-                                            id="updateDefaults"
-                                            checked={termsForm.updateGroupDefaults}
-                                            onChange={(e) => setTermsForm({ ...termsForm, updateGroupDefaults: e.target.checked })}
-                                            style={{ cursor: 'pointer', width: '18px', height: '18px' }}
-                                        />
-                                        <label htmlFor="updateDefaults" style={{ margin: 0, fontSize: '0.9rem', color: '#334155', cursor: 'pointer' }}>
-                                            Save as default for future months
-                                        </label>
-                                    </div>
-
-                                    <button type="submit" className="elder-btn-primary full-width" disabled={actionLoading}>
-                                        {actionLoading ? 'Updating...' : 'Update Terms'}
-                                    </button>
-                                </form>
-                            </div>
-                        )}
-
-                        {roundData?.status === 'OPEN' && (
-                            <div className="action-box live-box">
-                                <div className="live-indicator"><span className="pulse-dot bg-red"></span> Bidding is Live</div>
-                                <p>Members are currently placing bids. Close the window when ready.</p>
-                                <button className="elder-btn-danger-solid full-width" onClick={handleCloseBidding} disabled={actionLoading}>
-                                    <StopCircle size={20} /> Close Bidding Window
-                                </button>
-                            </div>
-                        )}
-
-                        {roundData?.status === 'CLOSED' && tiedUsers.length > 0 && (
-                            <div className="action-box tie-box">
-                                <div className="tie-box-header">
-                                    <AlertTriangle size={24} className="text-amber" />
-                                    <h4>Tie Detected!</h4>
-                                </div>
-                                <p>Multiple members placed the highest bid of <strong>{formatCurrency(tiedUsers[0].bidAmount)}</strong>. Please conduct an offline draw and select the winner below.</p>
-                                <div className="tie-list">
-                                    {tiedUsers.map(user => (
-                                        <div key={user.userId} className="tie-row">
-                                            <div className="tie-row-info">
-                                                <div className="feed-avatar"><User size={16} /></div>
-                                                <span title={user.name}>{user.name}</span>
-                                            </div>
-                                            <button className="elder-btn-primary" onClick={() => handleResolveTie(user.userId)} disabled={actionLoading}>
-                                                Select Winner
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {roundData?.status === 'PAYMENT_OPEN' && (
-                            <div className="action-box final-box">
-                                <h4><CheckCircle size={20} /> Payment Phase Active</h4>
-                                <p>Winner: <strong>{roundData.winnerName}</strong></p>
-                                <div className="fin-summary-mini">
-                                    <div><span>Winner Receives:</span> <strong>{formatCurrency(roundData.winnerReceivableAmount)}</strong></div>
-                                    <div><span>Others Pay:</span> <strong>{formatCurrency(roundData.payablePerMember)} /ea</strong></div>
-                                </div>
-                                <button className="elder-btn-primary full-width mt-1" onClick={handleFinalize} disabled={actionLoading}>
-                                    Finalize Month
-                                </button>
-                                <p className="final-hint">Ensure all collections/payouts are marked COMPLETED before finalizing.</p>
-                            </div>
-                        )}
-
-                        {groupData.currentMonth === 1 && (
+                        {/* ADMIN ROUND OVERRIDE */}
+                        {roundData?.isAdminRound ? (
                             <div className="action-box admin-box">
                                 <h4>Admin Round (Month 1)</h4>
                                 <p>No bidding occurs in the first month. The full pool is allocated to the platform/admin.</p>
                             </div>
-                        )}
+                        ) : (
+                            <>
+                                {/* UPDATE TERMS FORM (Only visible when PENDING) */}
+                                {roundData?.status === 'PENDING' && (
+                                    <div className="action-box setup-box">
 
+                                        {/* --- UPDATED SCHEDULED BANNER --- */}
+                                        <div className="scheduled-banner">
+                                            <div className="scheduled-icon">
+                                                <Calendar size={28} />
+                                            </div>
+                                            <div className="scheduled-info">
+                                                <div className="scheduled-header-row">
+                                                    <p className="scheduled-label">Bidding Scheduled For</p>
+                                                    {roundData.usingDefaultTerms ? (
+                                                        <span className="terms-badge badge-default"><CheckCircle size={12} /> Default Terms</span>
+                                                    ) : (
+                                                        <span className="terms-badge badge-custom"><Settings size={12} /> Custom Terms</span>
+                                                    )}
+                                                </div>
+                                                <h4 className="scheduled-date">
+                                                    {formatScheduleDate(roundData.scheduledBiddingDate)}
+                                                </h4>
+                                            </div>
+                                        </div>
+                                        {/* ---------------------------- */}
+
+                                        <h4><Settings size={20} /> Update Bidding Terms</h4>
+                                        <p className="setup-hint">
+                                            The round will open automatically at the scheduled time. You can override the default constraints before it starts.
+                                        </p>
+
+                                        {/* DEFAULT TERMS COMPARISON BOX */}
+                                        <div className="default-terms-info">
+                                            <Info size={16} />
+                                            <span>
+                                                <strong>Default Terms:</strong> Min {formatCurrency(roundData.defaultBidTerms?.minBid)} &nbsp;|&nbsp; Max {formatCurrency(roundData.defaultBidTerms?.maxBid)} &nbsp;|&nbsp; Step {formatCurrency(roundData.defaultBidTerms?.bidMultiple)}
+                                            </span>
+                                        </div>
+
+                                        <form onSubmit={handleUpdateTerms}>
+                                            <div className="form-group">
+                                                <label>Min Bid Allowed (₹)</label>
+                                                <input type="number" value={termsForm.minBid} onChange={e => setTermsForm({ ...termsForm, minBid: e.target.value })} required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Max Bid Allowed (₹)</label>
+                                                <input type="number" value={termsForm.maxBid} onChange={e => setTermsForm({ ...termsForm, maxBid: e.target.value })} required />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>Bid Multiple (₹)</label>
+                                                <input type="number" value={termsForm.bidMultiple} onChange={e => setTermsForm({ ...termsForm, bidMultiple: e.target.value })} required />
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', marginTop: '0.5rem' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    id="updateDefaults"
+                                                    checked={termsForm.updateGroupDefaults}
+                                                    onChange={(e) => setTermsForm({ ...termsForm, updateGroupDefaults: e.target.checked })}
+                                                    style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                                                />
+                                                <label htmlFor="updateDefaults" style={{ margin: 0, fontSize: '0.9rem', color: '#334155', cursor: 'pointer' }}>
+                                                    Save as default for future months
+                                                </label>
+                                            </div>
+
+                                            <button type="submit" className="elder-btn-primary full-width" disabled={actionLoading}>
+                                                {actionLoading ? 'Updating...' : 'Update Terms'}
+                                            </button>
+                                        </form>
+                                    </div>
+                                )}
+
+                                {roundData?.status === 'OPEN' && (
+                                    <div className="action-box live-box">
+                                        <div className="live-indicator"><span className="pulse-dot bg-red"></span> Bidding is Live</div>
+                                        <p>Members are currently placing bids. Close the window when ready.</p>
+                                        <button className="elder-btn-danger-solid full-width" onClick={handleCloseBidding} disabled={actionLoading}>
+                                            <StopCircle size={20} /> Close Bidding Window
+                                        </button>
+                                    </div>
+                                )}
+
+                                {roundData?.status === 'CLOSED' && tiedUsers.length > 0 && (
+                                    <div className="action-box tie-box">
+                                        <div className="tie-box-header">
+                                            <AlertTriangle size={24} className="text-amber" />
+                                            <h4>Tie Detected!</h4>
+                                        </div>
+                                        <p>Multiple members placed the highest bid of <strong>{formatCurrency(tiedUsers[0].bidAmount)}</strong>. Please conduct an offline draw and select the winner below.</p>
+                                        <div className="tie-list">
+                                            {tiedUsers.map(user => (
+                                                <div key={user.userId} className="tie-row">
+                                                    <div className="tie-row-info">
+                                                        <div className="feed-avatar"><User size={16} /></div>
+                                                        <span title={user.name}>{user.name}</span>
+                                                    </div>
+                                                    <button className="elder-btn-primary" onClick={() => handleResolveTie(user.userId)} disabled={actionLoading}>
+                                                        Select Winner
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {roundData?.status === 'PAYMENT_OPEN' && (
+                                    <div className="action-box final-box">
+                                        <h4><CheckCircle size={20} /> Payment Phase Active</h4>
+                                        <p>Winner: <strong>{roundData.winnerName}</strong></p>
+                                        <div className="fin-summary-mini">
+                                            <div><span>Winner Receives:</span> <strong>{formatCurrency(roundData.winnerReceivableAmount)}</strong></div>
+                                            <div><span>Others Pay:</span> <strong>{formatCurrency(roundData.payablePerMember)} /ea</strong></div>
+                                        </div>
+                                        <button className="elder-btn-primary full-width mt-1" onClick={handleFinalize} disabled={actionLoading}>
+                                            Finalize Month
+                                        </button>
+                                        <p className="final-hint">Ensure all collections/payouts are marked COMPLETED before finalizing.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 </div>
 

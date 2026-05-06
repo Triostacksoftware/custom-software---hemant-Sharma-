@@ -18,6 +18,15 @@ export const employeeApi = {
     // Transaction history
     getTransactionHistory: (params = {}) => api.get('/employee/transactions/history', { params }),
 
+    // === Cash Transfers (Inter-Employee) ===
+    cashTransfers: {
+        getDirectory: () => api.get('/employee/transfer-directory'),
+        initiate: (data) => api.post('/employee/cash-transfer', data),
+        confirm: (transferId) => api.patch(`/employee/cash-transfer/${transferId}/confirm`),
+        cancel: (transferId) => api.patch(`/employee/cash-transfer/${transferId}/cancel`),
+        getHistory: (params = {}) => api.get('/employee/cash-transfer/history', { params }),
+    },
+
     // === Notification Endpoints ===
     getUnreadNotifications: () => api.get('/employee/notifications/unread-count'),
     getNotificationsList: (unreadOnly = false, limit = 5, page = 1) => {

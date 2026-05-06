@@ -2111,6 +2111,8 @@ exports.finalizeBidding = async (req, res, next) => {
 
         // Normal flow: create PENDING round — copy defaultBidTerms from group
         const scheduledBiddingDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        // 11:30:00.000 AM UTC strictly translates to 5:00 PM IST
+        scheduledBiddingDate.setUTCHours(11, 30, 0, 0);
 
         const nextRound = await BiddingRound.create({
             groupId: groupDoc._id,
@@ -2162,13 +2164,11 @@ exports.finalizeBidding = async (req, res, next) => {
 };
 
 
-//controller to get current bidding round details for admin dashboard
+// Controller to get current bidding round details for admin dashboard
 exports.getCurrentBiddingRound = async (req, res, next) => {
     try {
-
         const { groupId } = req.params;
 
-        //Validate groupId
         if (!mongoose.Types.ObjectId.isValid(groupId)) {
             return res.status(400).json({
                 success: false,
@@ -2178,9 +2178,10 @@ exports.getCurrentBiddingRound = async (req, res, next) => {
 
         const groupObjectId = new mongoose.Types.ObjectId(groupId);
 
-        //Fetch group to determine current month
+        // CHANGED: also select defaultBidTerms — needed to show admin the
+        // fallback terms when the round is PENDING and no override has been set
         const group = await Groups.findById(groupObjectId)
-            .select("currentMonth")
+            .select("currentMonth defaultBidTerms")
             .lean();
 
         if (!group) {
@@ -2190,7 +2191,6 @@ exports.getCurrentBiddingRound = async (req, res, next) => {
             });
         }
 
-        //fetch current bidding round
         const round = await BiddingRound.findOne({
             groupId: groupObjectId,
             monthNumber: group.currentMonth
@@ -2198,7 +2198,6 @@ exports.getCurrentBiddingRound = async (req, res, next) => {
             .populate("winnerUserId", "name")
             .lean();
 
-        //If no round exists
         if (!round) {
             return res.status(200).json({
                 success: true,
@@ -2206,16 +2205,29 @@ exports.getCurrentBiddingRound = async (req, res, next) => {
             });
         }
 
-        //Fetch bid count
-        const bidsCount = await Bid.countDocuments({
-            biddingRoundId: round._id
-        });
+        const bidsCount = await Bid.countDocuments({ biddingRoundId: round._id });
 
-        // Validate bid range (10% - 20%)
-        const minBid = round.totalPoolAmount * 0.10;
-        const maxBid = round.totalPoolAmount * 0.20;
+        // ── Resolve bid terms ─────────────────────────────────────────────────
+        // This is what the frontend displays in the "Bidding Scheduled" panel:
+        //   "Bidding is scheduled on {scheduledBiddingDate}. Default terms are
+        //    Min ₹{minBid}, Max ₹{maxBid}, Step ₹{bidMultiple}. Update if needed."
+        const resolvedMinBid = round.minBid > 0
+            ? round.minBid
+            : (group.defaultBidTerms?.minBid || 0);
 
-        //Build response
+        const resolvedMaxBid = round.maxBid > 0
+            ? round.maxBid
+            : (group.defaultBidTerms?.maxBid || 0);
+
+        const resolvedBidMultiple = round.bidMultiple > 1
+            ? round.bidMultiple
+            : (group.defaultBidTerms?.bidMultiple || 1);
+
+        // Whether the admin has already overridden the terms for this round
+        // (vs still using defaultBidTerms). Useful for frontend to show
+        // "Custom terms set" vs "Using default terms"
+        const usingDefaultTerms = round.minBid === 0 && round.maxBid === 0;
+
         const response = {
             _id: round._id,
             groupId: round.groupId,
@@ -2225,21 +2237,42 @@ exports.getCurrentBiddingRound = async (req, res, next) => {
             startedAt: round.startedAt || null,
             endedAt: round.endedAt || null,
 
+            // NEW: when this round's bidding is scheduled to auto-open (5pm IST)
+            // Only set for PENDING rounds — null for all other statuses
+            scheduledBiddingDate: round.scheduledBiddingDate || null,
+
             totalPoolAmount: round.totalPoolAmount || null,
 
             winnerUserId: round.winnerUserId?._id || null,
             winnerName: round.winnerUserId?.name || null,
 
             winningBidAmount: round.winningBidAmount || null,
-
             payablePerMember: round.payablePerMember || null,
             winnerReceivableAmount: round.winnerReceivableAmount || null,
             dividendPerMember: round.dividendPerMember || null,
 
             bidsCount,
 
-            minBid,
-            maxBid
+            // CHANGED: stored bid terms replacing the old hardcoded 10%/20% values
+            minBid: resolvedMinBid,
+            maxBid: resolvedMaxBid,
+            bidMultiple: resolvedBidMultiple,
+
+            // Whether the round is using group defaults or admin-overridden terms.
+            // Frontend can use this to show "Using default terms" vs "Custom terms"
+            usingDefaultTerms,
+
+            // NEW: the group's default bid terms — always included so the frontend
+            // can show them for comparison even when the round has custom terms
+            defaultBidTerms: {
+                minBid: group.defaultBidTerms?.minBid || 0,
+                maxBid: group.defaultBidTerms?.maxBid || 0,
+                bidMultiple: group.defaultBidTerms?.bidMultiple || 1
+            },
+
+            // Admin round flag — frontend uses this to hide bidding controls
+            // and show the contribution collection panel instead
+            isAdminRound: round.isAdminRound || false
         };
 
         return res.status(200).json({

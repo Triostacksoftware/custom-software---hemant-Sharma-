@@ -1,0 +1,494 @@
+/* === WALLET CONTROLS === */
+.wallet-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 1rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+    border: 1px solid #e2e8f0;
+    margin-bottom: 2rem;
+}
+
+.wallet-tabs {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.w-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.w-tab:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.w-tab.active {
+    background: #1e293b;
+    color: white;
+}
+
+.wallet-list-container {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid #e2e8f0;
+    min-height: 400px;
+}
+
+.wallet-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    color: #94a3b8;
+    font-size: 1.1rem;
+}
+
+/* === WALLET FEED (COMPACT DESIGN) === */
+.wallet-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    /* Tighter gap between rows */
+}
+
+.wallet-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    /* Reduced padding for compact look */
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    /* Sleeker border radius */
+    background: #f8fafc;
+    transition: 0.2s;
+}
+
+.wallet-card:hover {
+    border-color: #cbd5e1;
+    background: white;
+}
+
+.w-card-left {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    /* Tighter gap */
+    min-width: 0;
+    /* Prevents flex blowout if text is long */
+}
+
+.w-icon {
+    width: 38px;
+    /* Scaled down icon */
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.w-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.w-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.w-info h4 {
+    margin: 0 0 0.15rem 0;
+    color: #1e293b;
+    font-size: 0.95rem;
+    /* Scaled down slightly */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.w-info p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.w-reason {
+    font-style: italic;
+    margin-top: 0.15rem !important;
+    color: #94a3b8 !important;
+    font-size: 0.8rem !important;
+}
+
+.w-card-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.4rem;
+    /* Tightened gap between amount and buttons */
+    flex-shrink: 0;
+    margin-left: 1rem;
+}
+
+.w-amount-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.w-amount-block h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    /* Scaled down */
+    text-align: right;
+    font-weight: 800;
+}
+
+.w-status {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    display: inline-block;
+    margin-top: 0.25rem;
+}
+
+.s-green {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.s-red {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+/* === ACTION BUTTONS === */
+.w-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.25rem;
+}
+
+.tx-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    /* Compact padding */
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    /* Scaled down text */
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.btn-confirm {
+    background: #ecfdf5;
+    color: #059669;
+    border-color: #a7f3d0;
+}
+
+.btn-confirm:hover {
+    background: #10b981;
+    color: white;
+    border-color: #10b981;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
+}
+
+.btn-cancel {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.btn-cancel:hover {
+    background: #ef4444;
+    color: white;
+    border-color: #ef4444;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);
+}
+
+/* Fix for Top Send Cash Button Icon Alignment */
+.send-cash-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+
+/* === CONFIRM DIALOG MODAL === */
+.confirm-dialog-card {
+    text-align: center;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2.5rem 2rem;
+}
+
+.confirm-icon-wrapper {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+.confirm-dialog-card h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.4rem;
+    color: #1e293b;
+    font-weight: 800;
+}
+
+.confirm-dialog-card p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+    font-size: 1.05rem;
+}
+
+.btn-danger-fill {
+    background: #ef4444 !important;
+    color: white !important;
+}
+
+.btn-danger-fill:hover:not(:disabled) {
+    background: #dc2626 !important;
+}
+
+.btn-success-fill {
+    background: #10b981 !important;
+    color: white !important;
+}
+
+.btn-success-fill:hover:not(:disabled) {
+    background: #059669 !important;
+}
+
+/* === CUSTOM DROPDOWN === */
+.custom-dropdown-container {
+    position: relative;
+    width: 100%;
+}
+
+.custom-dropdown-trigger {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 2px solid #cbd5e1;
+    border-radius: 10px;
+    background: white;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.custom-dropdown-trigger:hover {
+    border-color: #94a3b8;
+}
+
+.custom-dropdown-trigger.open {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.placeholder-text {
+    color: #94a3b8;
+    font-size: 1rem;
+}
+
+.dropdown-arrow {
+    color: #64748b;
+    transition: transform 0.3s ease;
+}
+
+.dropdown-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.selected-emp-display {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.selected-emp-name {
+    font-size: 1.05rem;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.custom-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 50;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.custom-dropdown-item {
+    padding: 0.85rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s ease;
+}
+
+.custom-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.custom-dropdown-item:hover {
+    background: #f8fafc;
+}
+
+.custom-dropdown-item.selected {
+    background: #eff6ff;
+}
+
+.emp-avatar-mini {
+    background: #e2e8f0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    flex-shrink: 0;
+}
+
+.custom-dropdown-item.selected .emp-avatar-mini {
+    background: #3b82f6;
+    color: white;
+}
+
+.emp-drop-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.emp-drop-info h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: #1e293b;
+}
+
+.emp-drop-info span {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.dropdown-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+
+/* === RESPONSIVE MOBILE FIXES === */
+@media (max-width: 768px) {
+    .wallet-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .wallet-tabs {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    /* Force rows to stay horizontal on mobile */
+    .wallet-card {
+        flex-direction: row;
+        align-items: flex-start;
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .w-card-left {
+        gap: 0.75rem;
+    }
+
+    .w-icon {
+        width: 32px;
+        height: 32px;
+        margin-top: 0.1rem;
+        /* Aligns smaller icon with text block */
+    }
+
+    .w-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .w-card-right {
+        margin-left: 0.5rem;
+    }
+
+    .tx-action-btn {
+        width: auto;
+    }
+
+    .confirm-dialog-card {
+        padding: 2rem 1.5rem;
+    }
+}

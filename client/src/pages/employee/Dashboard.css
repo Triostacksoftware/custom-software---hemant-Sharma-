@@ -181,20 +181,9 @@
     border: 1px solid #e2e8f0;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.5rem;
     margin-bottom: 2rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-}
-
-.emp-group-select {
-    border: none;
-    outline: none;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #1e293b;
-    width: 100%;
-    cursor: pointer;
-    background: transparent;
 }
 
 /* Lists Grid */
@@ -238,11 +227,12 @@
 
 .list-body {
     padding: 1rem;
-    height: 350px;
+    height: 380px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.4rem;
+    /* Tightened gap for density */
 }
 
 .empty-text {
@@ -252,86 +242,97 @@
     font-style: italic;
 }
 
-.emp-task-card {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 1rem;
-    background: #f8fafc;
+/* === NEW COMPACT LIST DESIGN === */
+.compact-task-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: border-color 0.2s;
+    padding: 0.6rem 0.85rem;
+    /* Reduced vertical padding */
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    /* Tighter radius */
+    transition: all 0.2s ease;
 }
 
-.emp-task-card:hover {
+.compact-task-row:hover {
     border-color: #cbd5e1;
+    background: white;
 }
 
-.payout-task {
+.payout-row {
     background: #f0fdf4;
     border-color: #bbf7d0;
 }
 
-.task-info h4 {
-    margin: 0 0 0.25rem 0;
-    font-size: 1.05rem;
+.payout-row:hover {
+    background: #dcfce7;
+    border-color: #86efac;
+}
+
+.task-info-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    /* Ensures text truncation works */
+    margin-right: 0.5rem;
+}
+
+.member-name-compact {
+    font-size: 0.95rem;
+    font-weight: 700;
     color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.task-meta {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #64748b;
+.task-meta-compact {
+    font-size: 0.8rem;
+    font-weight: 600;
 }
 
-/* Buttons */
-.emp-btn-initiate {
+/* Compact Buttons */
+.compact-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.65rem;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: 0.2s ease;
+    white-space: nowrap;
+}
+
+.compact-btn-initiate {
     background: #eff6ff;
     color: #2563eb;
     border: 1px solid #bfdbfe;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    transition: 0.2s;
 }
 
-.emp-btn-initiate:hover {
+.compact-btn-initiate:hover {
     background: #dbeafe;
 }
 
-.emp-btn-initiate-payout {
+.compact-btn-payout {
     background: #ecfdf5;
     color: #059669;
     border: 1px solid #a7f3d0;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    transition: 0.2s;
 }
 
-.emp-btn-initiate-payout:hover {
+.compact-btn-payout:hover {
     background: #d1fae5;
 }
 
-.emp-btn-waiting {
+.compact-btn-waiting {
     background: #f1f5f9;
     color: #64748b;
     border: 1px solid #cbd5e1;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-weight: 600;
     cursor: not-allowed;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
 }
 
 /* History Table */
@@ -391,20 +392,12 @@
     text-transform: uppercase;
 }
 
-.bg-green-light {
-    background: #dcfce7;
-}
-
-.text-green {
-    color: #15803d;
+.text-yellow {
+    color: #b45309;
 }
 
 .bg-yellow-light {
     background: #fef3c7;
-}
-
-.text-yellow {
-    color: #b45309;
 }
 
 /* Modals */
@@ -516,6 +509,204 @@
     cursor: not-allowed;
 }
 
+/* === CASH MANAGEMENT HUB BANNER === */
+.emp-wallet-banner {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #bfdbfe;
+    border-radius: 16px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    transition: all 0.2s ease;
+}
+
+.emp-wallet-banner:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.15);
+    border-color: #93c5fd;
+}
+
+.wallet-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.wallet-banner-icon {
+    background: #eff6ff;
+    padding: 1rem;
+    border-radius: 12px;
+    color: #3b82f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wallet-banner-info h2 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #1e293b;
+}
+
+.wallet-banner-info p {
+    margin: 0;
+    color: #64748b;
+    font-size: 1rem;
+}
+
+.wallet-banner-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.85rem 1.5rem;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.wallet-banner-btn:hover {
+    background: #2563eb;
+}
+
+/* === CUSTOM DROPDOWN (Global for Dashboard) === */
+.custom-dropdown-container {
+    position: relative;
+}
+
+.custom-dropdown-trigger {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 2px solid #cbd5e1;
+    border-radius: 10px;
+    background: white;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.filter-trigger {
+    padding: 0.6rem 1rem;
+    /* Slightly smaller for the filter bar */
+    border: 1px solid #e2e8f0;
+}
+
+.custom-dropdown-trigger:hover {
+    border-color: #94a3b8;
+}
+
+.custom-dropdown-trigger.open {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.placeholder-text {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.dropdown-arrow {
+    color: #64748b;
+    transition: transform 0.3s ease;
+}
+
+.dropdown-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.selected-emp-display {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.selected-emp-name {
+    font-size: 1rem;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.custom-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 50;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.custom-dropdown-item {
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s ease;
+}
+
+.custom-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.custom-dropdown-item:hover {
+    background: #f8fafc;
+}
+
+.custom-dropdown-item.selected {
+    background: #eff6ff;
+}
+
+.emp-drop-info h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #1e293b;
+}
+
+.emp-drop-info span {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.dropdown-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: #94a3b8;
+    font-style: italic;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .emp-stats-grid {
@@ -530,6 +721,18 @@
         padding: 1.25rem;
     }
 
+    .emp-filter-bar {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .custom-dropdown-container {
+        width: 100% !important;
+        margin-left: 0 !important;
+        flex: 1;
+        /* Allows the dropdown to fluidly fill the remaining space next to the icon */
+    }
+
     .emp-lists-grid {
         grid-template-columns: 1fr;
     }
@@ -541,10 +744,40 @@
     .emp-modal-card {
         padding: 1.5rem;
     }
+
+    /* Compact lists stay horizontal on mobile */
+    .compact-task-row {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .emp-wallet-banner {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 1.25rem;
+        gap: 1.25rem;
+    }
+
+    .wallet-banner-left {
+        width: 100%;
+        gap: 1rem;
+    }
+
+    .wallet-banner-info h2 {
+        font-size: 1.25rem;
+    }
+
+    .wallet-banner-info p {
+        font-size: 0.9rem;
+    }
+
+    .wallet-banner-btn {
+        width: 100%;
+        justify-content: center;
+    }
 }
 
-
-/* === NOTIFICATION MODAL STYLES === */
+/* === NOTIFICATION MODAL STYLES (Kept intact) === */
 .notification-wrapper {
     position: relative;
 }
@@ -780,7 +1013,6 @@
     font-weight: 500;
 }
 
-/* Ensure mobile compatibility for modal */
 @media (max-width: 768px) {
     .notification-modal {
         position: fixed;
@@ -792,5 +1024,55 @@
 
     .notification-modal.expanded {
         width: 90%;
+    }
+}
+
+
+/* === DIALOG MODAL STYLES (For Success & Confirmations) === */
+.confirm-dialog-card {
+    text-align: center;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2.5rem 2rem;
+}
+
+.confirm-icon-wrapper {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+.confirm-dialog-card h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.4rem;
+    color: #1e293b;
+    font-weight: 800;
+}
+
+.confirm-dialog-card p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+    font-size: 1.05rem;
+}
+
+.btn-success-fill {
+    background: #10b981 !important;
+    color: white !important;
+}
+
+.btn-success-fill:hover:not(:disabled) {
+    background: #059669 !important;
+}
+
+@media (max-width: 768px) {
+    .confirm-dialog-card {
+        padding: 2rem 1.5rem;
     }
 }
