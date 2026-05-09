@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, ChevronLeft, ChevronRight, Gavel, CheckCircle, Clock, Users, IndianRupee, AlertTriangle, FileText } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Gavel, CheckCircle, Clock, Users, IndianRupee, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import './BellNotification.css';
 

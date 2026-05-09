@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import './AuthModal.css';
 
-const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode }) => {
+const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode, onRegistrationSuccess }) => {
     const { login, signup } = useAuth();
     const [formData, setFormData] = useState({
         name: '',
@@ -13,7 +13,6 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode }) => {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [apiResponse, setApiResponse] = useState(null);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -22,7 +21,6 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode }) => {
             [name]: value
         }));
         setError('');
-        setApiResponse(null);
     };
 
     const validateForm = () => {
@@ -51,7 +49,6 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode }) => {
 
         setLoading(true);
         setError('');
-        setApiResponse(null);
 
         try {
             const credentials = {
@@ -73,17 +70,14 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode }) => {
             }
 
             if (result.success) {
-                // FIX 2: Don't show raw response for login, redirect immediately
                 if (mode === 'login' && result.data?.token) {
                     localStorage.setItem('token', result.data.token);
                     onSuccess(role, result.data.token); // Redirect immediately
                 } else {
-                    // For signup, show success message
-                    setApiResponse({
-                        type: 'success',
-                        message: 'Registration successful!',
-                        data: result.data
-                    });
+                    // Trigger the custom success popup on the LandingPage
+                    if (onRegistrationSuccess) {
+                        onRegistrationSuccess();
+                    }
                     setLoading(false);
                 }
             } else {
@@ -193,21 +187,6 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode }) => {
                         {error && (
                             <div className="error-message" role="alert">
                                 <strong>Error:</strong> {error}
-                            </div>
-                        )}
-
-                        {/* FIX 2: Only show API response for signup, not for login */}
-                        {apiResponse && mode === 'signup' && (
-                            <div className={`api-response ${apiResponse.type}`}>
-                                <div className="response-header">
-                                    <strong>{apiResponse.type === 'success' ? '✓ Success!' : '✗ Error'}</strong>
-                                </div>
-                                <div className="response-message">{apiResponse.message}</div>
-                                {role !== 'admin' && (
-                                    <div className="response-note">
-                                        Note: Your account requires admin approval before you can login.
-                                    </div>
-                                )}
                             </div>
                         )}
 
