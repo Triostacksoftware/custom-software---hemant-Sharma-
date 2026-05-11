@@ -71,6 +71,14 @@
     color: #2563eb;
 }
 
+.bg-red-light {
+    background: #fef2f2;
+}
+
+.text-red {
+    color: #dc2626;
+}
+
 .p-stat-info p {
     margin: 0 0 0.25rem 0;
     color: #64748b;
@@ -85,7 +93,7 @@
     letter-spacing: -0.5px;
 }
 
-/* === CONTROL PANEL === */
+/* === CONTROL PANEL (Search & Filter) === */
 .payouts-control-panel {
     display: flex;
     justify-content: space-between;
@@ -99,131 +107,510 @@
     border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
-.filter-wrapper {
+.admin-search-form {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    background: #f8fafc;
+    gap: 0.75rem;
+    flex: 1;
+    max-width: 500px;
+}
+
+.admin-search-input-wrapper {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    background: white;
     border: 1px solid #cbd5e1;
     border-radius: 10px;
-    padding: 0 1rem;
-    height: 48px;
+    padding: 0 0.75rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.group-filter-select {
-    border: none;
-    background: transparent;
-    font-size: 1rem;
-    color: #1e293b;
-    font-weight: 600;
-    outline: none;
-    cursor: pointer;
-    width: 250px;
+.admin-search-input-wrapper:focus-within {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* === PAYOUT CARD STYLES === */
-.pay-card-left {
-    display: flex;
-    align-items: flex-start;
-    gap: 1.25rem;
-    flex: 1;
-    min-width: 0;
-}
-
-.pay-card-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    flex: 1;
-    min-width: 0;
-}
-
-.pay-phone {
-    margin: 0 0 0.5rem 0;
-    color: #64748b;
-    font-size: 1rem;
-    font-weight: 500;
-}
-
-.pay-group-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.pay-badge {
-    font-size: 0.85rem;
-    font-weight: 600;
-    padding: 0.25rem 0.6rem;
-    border-radius: 6px;
-}
-
-.group-name-badge {
-    background: #f1f5f9;
-    color: #475569;
-    border: 1px solid #cbd5e1;
-}
-
-.month-badge {
-    background: #fff7ed;
-    color: #c2410c;
-    border: 1px solid #fdba74;
-}
-
-.pay-card-right {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
+.admin-search-icon {
+    color: #94a3b8;
     flex-shrink: 0;
 }
 
-.pay-financials {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    background: #f8fafc;
-    padding: 0.75rem 1rem;
-    border-radius: 10px;
-    border: 1px solid #e2e8f0;
-    min-width: 200px;
+.admin-search-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 0.75rem 0.5rem;
+    font-size: 1rem;
+    color: #1e293b;
+    outline: none;
+    min-width: 0;
 }
 
-.pay-fin-detail {
+.admin-search-submit-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.25rem;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.admin-search-submit-btn:hover {
+    background: #2563eb;
+}
+
+/* === CUSTOM DROPDOWN FILTER === */
+.payouts-control-panel .filter-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    width: 320px;
+    max-width: 100%;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    height: auto !important;
+}
+
+.filter-icon {
+    color: #64748b;
+    flex-shrink: 0;
+}
+
+.custom-dropdown-container {
+    position: relative;
+    flex: 1;
+}
+
+.custom-dropdown-trigger {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: white;
+    cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.95rem;
-    color: #64748b;
+    transition: all 0.2s ease;
+    user-select: none;
 }
 
-.pay-fin-detail strong {
-    font-size: 1rem;
+.custom-dropdown-trigger:hover {
+    border-color: #94a3b8;
+}
+
+.custom-dropdown-trigger.open {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.placeholder-text {
+    color: #64748b;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.selected-emp-name {
+    font-size: 0.95rem;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.dropdown-arrow {
+    color: #64748b;
+    transition: transform 0.3s ease;
+}
+
+.dropdown-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.custom-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 50;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.custom-dropdown-item {
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s ease;
+}
+
+.custom-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.custom-dropdown-item:hover {
+    background: #f8fafc;
+}
+
+.custom-dropdown-item.selected {
+    background: #eff6ff;
+}
+
+.emp-drop-info h4 {
+    margin: 0;
+    font-size: 0.95rem;
     color: #1e293b;
 }
 
-.bid-amount-text {
+/* === HIGH DENSITY COMPACT LIST === */
+.compact-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.compact-pay-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.01);
+}
+
+.compact-pay-row:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04);
+}
+
+.cp-left {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.cp-avatar {
+    height: 38px;
+    width: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.cp-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.cp-name {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cp-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cp-dot {
+    color: #cbd5e1;
+}
+
+.cp-group-text {
     font-weight: 600;
-    color: #94a3b8;
-    text-decoration: line-through;
-    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.pending-detail {
-    border-top: 1px solid #cbd5e1;
-    padding-top: 0.35rem;
-    margin-top: 0.15rem;
+.cp-month {
+    color: #d97706;
+    font-weight: 700;
 }
 
-.pending-detail strong {
+.cp-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+    margin-left: 1rem;
+}
+
+.cp-financials {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+}
+
+.cp-pending {
     font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1;
 }
 
-.notify-btn {
-    height: 100%;
+.cp-paid {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.cp-notify-btn {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+    padding: 0.5rem 0.85rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.cp-notify-btn:hover:not(:disabled) {
+    background: #d1fae5;
+}
+
+.cp-notify-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.spinner-micro {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(5, 150, 105, 0.3);
+    border-top-color: #059669;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Pagination & Empty States */
+.elder-empty-card {
+    background: white;
+    border-radius: 16px;
+    padding: 4rem 2rem;
+    text-align: center;
+    font-size: 1.2rem;
+    color: #64748b;
+    border: 2px dashed #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.empty-icon-wrapper {
+    height: 80px;
+    width: 80px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.elder-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    background: white;
+    padding: 1rem 1.5rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.page-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f1f5f9;
+    border: none;
+    color: #334155;
+    padding: 0.75rem 1.25rem;
     border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-/* === RESPONSIVE === */
+.page-btn:hover:not(:disabled) {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* =========================================
+   === CUSTOM DIALOG MODALS ===
+   ========================================= */
+
+.admin-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+    animation: fadeInOverlay 0.2s ease-out;
+}
+
+@keyframes fadeInOverlay {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.admin-modal-card {
+    background: white;
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.confirm-dialog-card {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.confirm-icon-wrapper {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+.confirm-dialog-card h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.4rem;
+    color: #1e293b;
+    font-weight: 800;
+}
+
+.confirm-dialog-card p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+    font-size: 1.05rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.modal-actions button {
+    flex: 1;
+}
+
+.btn-success-fill {
+    background: #10b981 !important;
+    color: white !important;
+}
+
+.btn-success-fill:hover:not(:disabled) {
+    background: #059669 !important;
+}
+
+.btn-danger-fill {
+    background: #ef4444 !important;
+    color: white !important;
+}
+
+.btn-danger-fill:hover:not(:disabled) {
+    background: #dc2626 !important;
+}
+
+/* === RESPONSIVE FOR MOBILE === */
 @media (max-width: 950px) {
     .payouts-control-panel {
         flex-direction: column;
@@ -234,13 +621,9 @@
         max-width: 100%;
     }
 
-    .filter-wrapper {
+    .payouts-control-panel .filter-wrapper {
         width: 100%;
         justify-content: center;
-    }
-
-    .group-filter-select {
-        width: 100%;
     }
 }
 
@@ -253,25 +636,53 @@
         padding: 0 1rem 3rem 1rem;
     }
 
-    .payout-card {
+    .elder-pagination {
         flex-direction: column;
-        align-items: stretch;
+        gap: 1.5rem;
     }
 
-    .pay-card-right {
-        flex-direction: column;
-        align-items: stretch;
-        border-top: 1px solid #f1f5f9;
-        padding-top: 1.25rem;
-    }
-
-    .pay-financials {
+    .page-btn {
         width: 100%;
-        box-sizing: border-box;
+        justify-content: center;
     }
 
-    .notify-btn {
-        padding: 1rem;
-        justify-content: center;
+    /* Compact Row Mobile Overrides */
+    .compact-pay-row {
+        padding: 0.75rem;
+    }
+
+    .cp-avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    .cp-name {
+        font-size: 1rem;
+    }
+
+    .cp-pending {
+        font-size: 1.05rem;
+    }
+
+    .cp-meta {
+        font-size: 0.75rem;
+    }
+
+    .cp-right {
+        gap: 0.6rem;
+        margin-left: 0.5rem;
+    }
+
+    /* Hide text on mobile button to save space */
+    .remind-txt {
+        display: none;
+    }
+
+    .cp-notify-btn {
+        padding: 0.5rem;
+    }
+
+    .admin-modal-card {
+        padding: 2rem 1.5rem;
     }
 }

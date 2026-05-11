@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Gavel, Search, PlayCircle, Users, Activity, CheckCircle, TrendingDown, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Gavel, Search, Users, CheckCircle, ArrowRight } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
 import './Bidding.css';
 
@@ -108,7 +108,8 @@ const BiddingHub = () => {
                                         </div>
                                         <div className="bstat">
                                             <span>Members</span>
-                                            <strong><Users size={14} className="text-slate" /> {group.memberCount}</strong>
+                                            {/* FIX: Add + 1 to account for the Admin */}
+                                            <strong><Users size={14} className="text-slate" /> {(group.memberCount || 0) + 1}</strong>
                                         </div>
                                     </div>
 

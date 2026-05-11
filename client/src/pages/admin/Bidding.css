@@ -667,3 +667,131 @@
         margin-bottom: 0.5rem;
     }
 }
+
+/* =========================================
+   === CUSTOM DIALOG MODALS ===
+   ========================================= */
+
+.admin-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+    animation: fadeInOverlay 0.2s ease-out;
+}
+
+@keyframes fadeInOverlay {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.admin-modal-card {
+    background: white;
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    animation: scaleIn 0.2s ease-out;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.confirm-dialog-card {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.confirm-icon-wrapper {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+.confirm-dialog-card h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.4rem;
+    color: #1e293b;
+    font-weight: 800;
+}
+
+.confirm-dialog-card p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+    font-size: 1.05rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.modal-actions button {
+    flex: 1;
+}
+
+/* Modal Button Color Overrides */
+.btn-primary-fill {
+    background: #2563eb !important;
+    color: white !important;
+}
+
+.btn-primary-fill:hover:not(:disabled) {
+    background: #1d4ed8 !important;
+}
+
+.btn-danger-fill {
+    background: #ef4444 !important;
+    color: white !important;
+}
+
+.btn-danger-fill:hover:not(:disabled) {
+    background: #dc2626 !important;
+}
+
+.btn-success-fill {
+    background: #10b981 !important;
+    color: white !important;
+}
+
+.btn-success-fill:hover:not(:disabled) {
+    background: #059669 !important;
+}
+
+.bg-emerald-light {
+    background: #ecfdf5;
+}
+
+.text-emerald {
+    color: #059669;
+}

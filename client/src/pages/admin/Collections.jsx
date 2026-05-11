@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, BellRing, User, TrendingDown, Users, CheckCircle, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Search, BellRing, User, TrendingDown, Users, CheckCircle, Filter, ChevronLeft, ChevronRight, ChevronDown, XCircle } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
 import './Collections.css';
 
@@ -19,8 +19,13 @@ const Collections = () => {
     const [selectedGroupId, setSelectedGroupId] = useState('');
     const [activeGroups, setActiveGroups] = useState([]);
 
-    // Action States
+    // UI States
+    const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
     const [remindingId, setRemindingId] = useState(null);
+
+    // Modal States
+    const [confirmModal, setConfirmModal] = useState({ show: false, record: null, title: '', message: '' });
+    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', isError: false });
 
     // Fetch Active Groups for the Filter Dropdown
     useEffect(() => {
@@ -83,8 +88,20 @@ const Collections = () => {
         }
     };
 
-    // Live Reminder Function
-    const handleSendReminder = async (record) => {
+    // --- Modal Reminder Flow ---
+    const promptSendReminder = (record) => {
+        setConfirmModal({
+            show: true,
+            record: record,
+            title: 'Send Reminder?',
+            message: `Are you sure you want to send a payment reminder to ${record.memberName} for the pending amount of ₹${record.pendingAmount}?`
+        });
+    };
+
+    const executeReminder = async () => {
+        const record = confirmModal.record;
+        setConfirmModal({ show: false, record: null, title: '', message: '' });
+
         const uniqueId = `${record.groupId}_${record.memberId}`;
         setRemindingId(uniqueId);
 
@@ -96,10 +113,20 @@ const Collections = () => {
             });
 
             if (response.data.success) {
-                alert(`Reminder sent successfully to ${record.memberName}`);
+                setInfoModal({
+                    show: true,
+                    title: 'Reminder Sent',
+                    message: `Push notification reminder sent successfully to ${record.memberName}.`,
+                    isError: false
+                });
             }
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to send reminder");
+            setInfoModal({
+                show: true,
+                title: 'Failed to Send',
+                message: err.response?.data?.message || "Failed to send reminder. Please try again.",
+                isError: true
+            });
         } finally {
             setRemindingId(null);
         }
@@ -108,6 +135,8 @@ const Collections = () => {
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
     };
+
+    const selectedGroupObj = activeGroups.find(g => g._id === selectedGroupId);
 
     return (
         <div className="admin-collections-container">
@@ -144,7 +173,7 @@ const Collections = () => {
                     </div>
                 </div>
 
-                {/* Control Panel (Search & Filter) */}
+                {/* Control Panel (Search & Custom Filter) */}
                 <div className="collections-control-panel">
                     <form className="admin-search-form" onSubmit={handleSearchSubmit}>
                         <div className="admin-search-input-wrapper">
@@ -161,17 +190,42 @@ const Collections = () => {
                     </form>
 
                     <div className="filter-wrapper">
-                        <Filter size={18} className="filter-icon" />
-                        <select
-                            className="group-filter-select"
-                            value={selectedGroupId}
-                            onChange={(e) => setSelectedGroupId(e.target.value)}
-                        >
-                            <option value="">All Active Groups</option>
-                            {activeGroups.map(g => (
-                                <option key={g._id} value={g._id}>{g.name}</option>
-                            ))}
-                        </select>
+                        <Filter size={20} className="filter-icon" />
+                        <div className="custom-dropdown-container">
+                            <div
+                                className={`custom-dropdown-trigger filter-trigger ${groupDropdownOpen ? 'open' : ''}`}
+                                onClick={() => setGroupDropdownOpen(!groupDropdownOpen)}
+                            >
+                                <span className={selectedGroupId ? "selected-emp-name" : "placeholder-text"}>
+                                    {selectedGroupObj ? selectedGroupObj.name : "All Active Groups"}
+                                </span>
+                                <ChevronDown size={18} className={`dropdown-arrow ${groupDropdownOpen ? 'rotated' : ''}`} />
+                            </div>
+
+                            {groupDropdownOpen && (
+                                <div className="custom-dropdown-menu">
+                                    <div
+                                        className={`custom-dropdown-item ${!selectedGroupId ? 'selected' : ''}`}
+                                        onClick={() => { setSelectedGroupId(''); setGroupDropdownOpen(false); }}
+                                    >
+                                        <div className="emp-drop-info">
+                                            <h4>All Active Groups</h4>
+                                        </div>
+                                    </div>
+                                    {activeGroups.map(g => (
+                                        <div
+                                            key={g._id}
+                                            className={`custom-dropdown-item ${selectedGroupId === g._id ? 'selected' : ''}`}
+                                            onClick={() => { setSelectedGroupId(g._id); setGroupDropdownOpen(false); }}
+                                        >
+                                            <div className="emp-drop-info">
+                                                <h4>{g.name}</h4>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -200,48 +254,43 @@ const Collections = () => {
                             <p>There are no pending collections for {selectedGroupId ? 'this group' : 'any active group'}.</p>
                         </div>
                     ) : (
-                        <div className="elder-list-container">
+                        <div className="compact-list-container">
                             {collections.map((record) => {
                                 const uniqueId = `${record.groupId}_${record.memberId}`;
                                 const isReminding = remindingId === uniqueId;
 
                                 return (
-                                    <div key={uniqueId} className="elder-list-card collection-card">
-                                        <div className="col-card-left">
-                                            <div className="icon-wrapper icon-slate"><User size={26} /></div>
-                                            <div className="col-card-info">
-                                                <h3 className="elder-card-title">{record.memberName}</h3>
-                                                <p className="col-phone">{record.memberPhone || 'No phone number'}</p>
-                                                <div className="col-group-badges">
-                                                    <span className="col-badge group-name-badge">{record.groupName}</span>
-                                                    <span className="col-badge month-badge">Month {record.currentMonth}</span>
+                                    <div key={uniqueId} className="compact-col-row">
+                                        <div className="cc-left">
+                                            <div className="cc-avatar bg-slate-light text-slate">
+                                                <User size={18} />
+                                            </div>
+                                            <div className="cc-info">
+                                                <h4 className="cc-name" title={record.memberName}>{record.memberName}</h4>
+                                                <div className="cc-meta">
+                                                    <span>{record.memberPhone || 'No phone'}</span>
+                                                    <span className="cc-dot">•</span>
+                                                    <span className="cc-group-text" title={record.groupName}>
+                                                        {record.groupName} <span className="cc-month">(M{record.currentMonth})</span>
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div className="col-card-right">
-                                            <div className="col-financials">
-                                                <div className="fin-detail">
-                                                    <span>Payable:</span>
-                                                    <strong>{formatCurrency(record.payableAmount)}</strong>
-                                                </div>
-                                                <div className="fin-detail">
-                                                    <span>Paid:</span>
-                                                    <strong className="text-green">{formatCurrency(record.alreadyPaid)}</strong>
-                                                </div>
-                                                <div className="fin-detail pending-detail">
-                                                    <span>Pending:</span>
-                                                    <strong className="text-red">{formatCurrency(record.pendingAmount)}</strong>
-                                                </div>
+                                        <div className="cc-right">
+                                            <div className="cc-financials">
+                                                <span className="cc-pending text-red">{formatCurrency(record.pendingAmount)}</span>
+                                                <span className="cc-paid" title={`Total Payable: ${formatCurrency(record.payableAmount)}`}>
+                                                    Paid {formatCurrency(record.alreadyPaid)}
+                                                </span>
                                             </div>
-
                                             <button
-                                                className="elder-btn-primary remind-btn"
-                                                onClick={() => handleSendReminder(record)}
+                                                className="cc-remind-btn"
+                                                onClick={() => promptSendReminder(record)}
                                                 disabled={isReminding || !record.memberPhone}
-                                                title={!record.memberPhone ? "Cannot send reminder without a phone number" : ""}
+                                                title={!record.memberPhone ? "Cannot send reminder without a phone number" : "Send Reminder"}
                                             >
-                                                {isReminding ? 'Sending...' : <><BellRing size={18} /> Remind</>}
+                                                {isReminding ? <span className="spinner-micro"></span> : <><BellRing size={16} /><span className="remind-txt">Remind</span></>}
                                             </button>
                                         </div>
                                     </div>
@@ -274,6 +323,56 @@ const Collections = () => {
                     </div>
                 )}
             </main>
+
+            {/* --- 1. Custom Confirmation Modal --- */}
+            {confirmModal.show && (
+                <div className="admin-modal-overlay">
+                    <div className="admin-modal-card confirm-dialog-card">
+                        <div className="confirm-icon-wrapper bg-blue-light text-blue">
+                            <BellRing size={36} />
+                        </div>
+                        <h3>{confirmModal.title}</h3>
+                        <p>{confirmModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                className="elder-btn-secondary"
+                                onClick={() => setConfirmModal({ ...confirmModal, show: false })}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="elder-btn-primary btn-primary-fill"
+                                onClick={executeReminder}
+                            >
+                                Yes, Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- 2. Custom Success/Error Info Modal --- */}
+            {infoModal.show && (
+                <div className="admin-modal-overlay">
+                    <div className="admin-modal-card confirm-dialog-card">
+                        <div className={`confirm-icon-wrapper ${infoModal.isError ? 'bg-red-light text-red' : 'bg-emerald-light text-emerald'}`}>
+                            {infoModal.isError ? <XCircle size={36} /> : <CheckCircle size={36} />}
+                        </div>
+                        <h3>{infoModal.title}</h3>
+                        <p>{infoModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                className={`elder-btn-primary full-width ${infoModal.isError ? 'btn-danger-fill' : 'btn-success-fill'}`}
+                                onClick={() => setInfoModal({ ...infoModal, show: false })}
+                            >
+                                Got it
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

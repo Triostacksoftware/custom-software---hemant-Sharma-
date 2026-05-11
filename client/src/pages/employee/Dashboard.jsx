@@ -179,33 +179,42 @@ const EmployeeDashboard = () => {
             </header>
 
             <main className="emp-main-content">
-                {/* Stat Cards */}
+
+                {/* Stat Cards - UPDATED STRUCTURE FOR MOBILE RESPONSIVENESS */}
                 <div className="emp-stats-grid">
                     <div className="emp-stat-card border-red">
-                        <div className="stat-icon bg-red-light"><TrendingDown size={24} className="text-red" /></div>
-                        <div className="stat-info">
-                            <p>Total Pending Collection</p>
+                        <div className="stat-top">
+                            <div className="stat-icon bg-red-light"><TrendingDown className="text-red stat-svg" /></div>
+                            <p>Pending Collection</p>
+                        </div>
+                        <div className="stat-bottom">
                             <h3 className="text-red">{formatCurrency(stats?.totalPendingCollectionThisMonth)}</h3>
                         </div>
                     </div>
                     <div className="emp-stat-card border-emerald">
-                        <div className="stat-icon bg-emerald-light"><TrendingUp size={24} className="text-emerald" /></div>
-                        <div className="stat-info">
-                            <p>Total Pending Payout</p>
+                        <div className="stat-top">
+                            <div className="stat-icon bg-emerald-light"><TrendingUp className="text-emerald stat-svg" /></div>
+                            <p>Pending Payout</p>
+                        </div>
+                        <div className="stat-bottom">
                             <h3 className="text-emerald">{formatCurrency(stats?.totalPendingPayoutThisMonth)}</h3>
                         </div>
                     </div>
                     <div className="emp-stat-card border-blue">
-                        <div className="stat-icon bg-blue-light"><IndianRupee size={24} className="text-blue" /></div>
-                        <div className="stat-info">
+                        <div className="stat-top">
+                            <div className="stat-icon bg-blue-light"><IndianRupee className="text-blue stat-svg" /></div>
                             <p>Today's Collection</p>
+                        </div>
+                        <div className="stat-bottom">
                             <h3 className="text-blue">{formatCurrency(stats?.todaysCollection)}</h3>
                         </div>
                     </div>
                     <div className="emp-stat-card border-slate">
-                        <div className="stat-icon bg-slate-light"><History size={24} className="text-slate" /></div>
-                        <div className="stat-info">
-                            <p>This Month's Collection</p>
+                        <div className="stat-top">
+                            <div className="stat-icon bg-slate-light"><History className="text-slate stat-svg" /></div>
+                            <p>Monthly Collection</p>
+                        </div>
+                        <div className="stat-bottom">
                             <h3 className="text-slate">{formatCurrency(stats?.thisMonthsCollection)}</h3>
                         </div>
                     </div>
@@ -406,7 +415,7 @@ const EmployeeDashboard = () => {
                                     max={actionModal.record?.remainingAmount}
                                     required
                                 />
-                                <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.35rem' }}>
+                                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.35rem 0 0 0' }}>
                                     You can process a partial amount. Max allowed: {formatCurrency(actionModal.record?.remainingAmount)}
                                 </p>
                             </div>

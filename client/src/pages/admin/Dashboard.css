@@ -19,7 +19,7 @@
     font-weight: 500;
 }
 
-/* === HEADER (Reused from Member Dashboard) === */
+/* === HEADER === */
 .dashboard-header {
     display: flex;
     justify-content: space-between;
@@ -67,7 +67,6 @@
     height: 55px;
     width: 55px;
     background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
-    /* More neutral logo placeholder */
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -161,7 +160,6 @@
 }
 
 /* === PROFESSIONAL COLOR PALETTE === */
-/* Replaced bright solids with subtle tinted backgrounds and strong icon colors */
 .icon-slate {
     background: #f1f5f9;
     color: #475569;
@@ -180,6 +178,14 @@
 .icon-rose {
     background: #fff1f2;
     color: #e11d48;
+}
+
+.text-slate {
+    color: #475569;
+}
+
+.text-navy {
+    color: #3730a3;
 }
 
 .text-emerald {
@@ -206,60 +212,83 @@
     background: #e11d48;
 }
 
-/* === STATS GRID (Top Section) === */
-.admin-stats-grid {
+
+/* === ADMIN STATS GRID (NEW STACKED DESIGN) === */
+.adm-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1.5rem;
+    /* Desktop layout handles 4 columns to fit 7 cards efficiently */
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
 }
 
-.stat-card {
+.adm-stat-card {
     background: white;
-    border-radius: 16px;
-    padding: 1.5rem;
+    padding: 1.15rem;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.adm-border-rose {
+    border-bottom: 3px solid #e11d48;
+}
+
+.adm-border-emerald {
+    border-bottom: 3px solid #059669;
+}
+
+.adm-border-navy {
+    border-bottom: 3px solid #3730a3;
+}
+
+.adm-border-slate {
+    border-bottom: 3px solid #475569;
+}
+
+.adm-stat-top {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-    transition: transform 0.2s, box-shadow 0.2s;
+    gap: 0.65rem;
 }
 
-.stat-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-    border-color: #cbd5e1;
-}
-
-.stat-icon {
-    height: 54px;
-    width: 54px;
-    border-radius: 14px;
+.adm-stat-icon {
+    height: 38px;
+    width: 38px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
 }
 
-.stat-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+.adm-stat-svg {
+    width: 20px;
+    height: 20px;
 }
 
-.stat-title {
+.adm-stat-top p {
     margin: 0;
-    font-size: 0.95rem;
     color: #64748b;
-    font-weight: 500;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    line-height: 1.2;
 }
 
-.stat-value {
+.adm-stat-bottom h3 {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     font-weight: 800;
-    color: #1e293b;
-    letter-spacing: -0.5px;
+    word-break: break-word;
+}
+
+/* Make Cash in Hand stretch across 2 columns on Desktop */
+.adm-card-full {
+    grid-column: span 2;
 }
 
 /* === ACTION CARDS GRID (Bottom Section) === */
@@ -347,11 +376,43 @@
     }
 }
 
-@media (max-width: 600px) {
-    .admin-stats-grid {
-        grid-template-columns: 1fr;
+/* Exact mapping for Tablet/Mobile layout (2 Columns, 4 Rows) */
+@media (max-width: 768px) {
+    .adm-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.65rem;
     }
 
+    .adm-card-full {
+        grid-column: span 2;
+        /* Cash in Hand spans full width row 3 */
+    }
+
+    .adm-stat-card {
+        padding: 0.85rem;
+        gap: 0.6rem;
+    }
+
+    .adm-stat-icon {
+        height: 32px;
+        width: 32px;
+    }
+
+    .adm-stat-svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .adm-stat-top p {
+        font-size: 0.75rem;
+    }
+
+    .adm-stat-bottom h3 {
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 600px) {
     .admin-actions-grid {
         grid-template-columns: 1fr;
     }

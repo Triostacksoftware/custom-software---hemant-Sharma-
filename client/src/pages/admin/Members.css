@@ -429,20 +429,38 @@
 }
 
 .global-stats-card {
-    display: flex;
-    gap: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    width: 100%;
 }
 
 .stat-box {
-    flex: 1;
     background: white;
     border-radius: 16px;
-    padding: 1.5rem;
+    padding: 1.25rem;
     border: 1px solid #e2e8f0;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
     display: flex;
     align-items: center;
     gap: 1.25rem;
+}
+
+/* Net Position Custom Colors */
+.bg-red-light {
+    background: #fef2f2;
+}
+
+.bg-emerald-light {
+    background: #ecfdf5;
+}
+
+.border-emerald {
+    border-color: #a7f3d0;
+}
+
+.border-red {
+    border-color: #fecaca;
 }
 
 .stat-box .stat-icon {
@@ -756,7 +774,8 @@
 
     /* Member Details Mobile */
     .global-stats-card {
-        flex-direction: column;
+        grid-template-columns: 1fr;
+        /* Stack vertically on small phones */
     }
 
     .group-card-header {

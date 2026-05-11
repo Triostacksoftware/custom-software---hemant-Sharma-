@@ -109,73 +109,106 @@ const Dashboard = () => {
             </header>
 
             <main className="admin-main-content">
-                {/* TOP SECTION: Statistics Cards */}
+                {/* TOP SECTION: Statistics Cards (UPDATED DESIGN) */}
                 <h2 className="section-heading">Overview & Statistics</h2>
-                <div className="admin-stats-grid">
 
-                    {/* 1. Pending Collection */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-rose"><TrendingDown size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Pending Collection (Month)</p>
-                            <h3 className="stat-value text-rose">{formatCurrency(stats.pendingCollectionThisMonth)}</h3>
+                <div className="adm-stats-grid">
+                    {/* 1. Pending Collection (Clickable) */}
+                    <div
+                        className="adm-stat-card adm-border-rose"
+                        onClick={() => navigate('/admin/collections')}
+                        style={{ cursor: 'pointer' }}
+                        title="View Collection List"
+                    >
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-rose"><TrendingDown className="adm-stat-svg" /></div>
+                            <p>Pending Collection</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-rose">{formatCurrency(stats.pendingCollectionThisMonth)}</h3>
                         </div>
                     </div>
 
-                    {/* 2. Pending Payout */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-emerald"><TrendingUp size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Pending Payout (Month)</p>
-                            <h3 className="stat-value text-emerald">{formatCurrency(stats.pendingPayoutThisMonth)}</h3>
+                    {/* 2. Pending Payout (Clickable) */}
+                    <div
+                        className="adm-stat-card adm-border-emerald"
+                        onClick={() => navigate('/admin/payouts')}
+                        style={{ cursor: 'pointer' }}
+                        title="View Payout List"
+                    >
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-emerald"><TrendingUp className="adm-stat-svg" /></div>
+                            <p>Pending Payout</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-emerald">{formatCurrency(stats.pendingPayoutThisMonth)}</h3>
                         </div>
                     </div>
 
                     {/* 3. Today's Collection */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-navy"><Sun size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Today's Collection</p>
-                            <h3 className="stat-value">{formatCurrency(stats.todaysCollection)}</h3>
+                    <div className="adm-stat-card adm-border-navy">
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-navy"><Sun className="adm-stat-svg" /></div>
+                            <p>Today's Collection</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-navy">{formatCurrency(stats.todaysCollection)}</h3>
                         </div>
                     </div>
 
-                    {/* 4. Cash In Hand (NEW) */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-emerald"><IndianRupee size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Cash in Hand</p>
-                            <h3 className="stat-value text-emerald">{formatCurrency(stats.cashInHand)}</h3>
+                    {/* 4. This Month's Collection */}
+                    <div className="adm-stat-card adm-border-navy">
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-navy"><Calendar className="adm-stat-svg" /></div>
+                            <p>Month's Collection</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-navy">{formatCurrency(stats.thisMonthsCollection)}</h3>
                         </div>
                     </div>
 
-                    {/* 5. This Month's Collection */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-navy"><Calendar size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">This Month's Collection</p>
-                            <h3 className="stat-value">{formatCurrency(stats.thisMonthsCollection)}</h3>
+                    {/* 5. Cash In Hand (Full Width Card) */}
+                    <div className="adm-stat-card adm-border-emerald adm-card-full">
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-emerald"><IndianRupee className="adm-stat-svg" /></div>
+                            <p>Cash in Hand</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-emerald">{formatCurrency(stats.cashInHand)}</h3>
                         </div>
                     </div>
 
-                    {/* 6. Total Groups */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-slate"><Folder size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Total Groups</p>
-                            <h3 className="stat-value">{stats.totalGroups}</h3>
+                    {/* 6. Total Groups (Clickable) */}
+                    <div
+                        className="adm-stat-card adm-border-slate"
+                        onClick={() => navigate('/admin/groups')}
+                        style={{ cursor: 'pointer' }}
+                        title="View Groups Management"
+                    >
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-slate"><Folder className="adm-stat-svg" /></div>
+                            <p>Total Groups</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-slate">{stats.totalGroups}</h3>
                         </div>
                     </div>
 
-                    {/* 7. Total Members */}
-                    <div className="stat-card">
-                        <div className="stat-icon icon-slate"><Users size={24} /></div>
-                        <div className="stat-info">
-                            <p className="stat-title">Total Members</p>
-                            <h3 className="stat-value">{stats.totalMembers}</h3>
+                    {/* 7. Total Members (Clickable) */}
+                    <div
+                        className="adm-stat-card adm-border-slate"
+                        onClick={() => navigate('/admin/members')}
+                        style={{ cursor: 'pointer' }}
+                        title="View Members Directory"
+                    >
+                        <div className="adm-stat-top">
+                            <div className="adm-stat-icon icon-slate"><Users className="adm-stat-svg" /></div>
+                            <p>Total Members</p>
+                        </div>
+                        <div className="adm-stat-bottom">
+                            <h3 className="text-slate">{stats.totalMembers}</h3>
                         </div>
                     </div>
-
                 </div>
 
                 <hr className="admin-divider" />

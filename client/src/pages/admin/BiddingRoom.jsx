@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle, Calendar, Info } from 'lucide-react';
+import { ArrowLeft, Settings, StopCircle, Trophy, AlertTriangle, User, Clock, CheckCircle, Calendar, Info, XCircle } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { adminApi } from '../../api/adminApi';
 import './Bidding.css';
@@ -22,24 +22,24 @@ const BiddingRoom = () => {
     // Tie Resolution State
     const [tiedUsers, setTiedUsers] = useState([]);
 
+    // --- NEW: Custom Modal States ---
+    const [confirmModal, setConfirmModal] = useState({ show: false, action: null, payload: null, title: '', message: '', btnText: '', btnColor: '' });
+    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', isError: false, redirectOnClose: false });
+
     const fetchData = async () => {
         try {
-            // Fetch group details to get baseline stats (pool size, etc.)
             const groupRes = await adminApi.groups.details(groupId);
             if (groupRes.data.success) {
                 setGroupData(groupRes.data.data.group);
             }
 
-            // Fetch current round status
             const roundRes = await adminApi.bidding.getCurrentRound(groupId);
             if (roundRes.data.success) {
                 setRoundData(roundRes.data.data);
 
-                // If round exists and is OPEN or CLOSED, fetch bids
                 if (roundRes.data.data && (roundRes.data.data.status === 'OPEN' || roundRes.data.data.status === 'CLOSED')) {
                     const bidsRes = await adminApi.bidding.getBids(roundRes.data.data._id);
                     if (bidsRes.data.success) {
-                        // Sort highest first for display
                         setBids(bidsRes.data.data.sort((a, b) => b.bidAmount - a.bidAmount));
                     }
                 }
@@ -51,7 +51,6 @@ const BiddingRoom = () => {
         }
     };
 
-    // Initial Data Fetch
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,18 +58,14 @@ const BiddingRoom = () => {
 
     // SOCKET CONNECTION FOR LIVE BIDS
     useEffect(() => {
-        // Only connect if the round exists and we have its ID
         if (!roundData || !roundData._id) return;
 
-        const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const socketUrl = process.env.REACT_APP_API_URL;
         const newSocket = io(socketUrl);
 
-        // Join the exact same room the members are in
         newSocket.emit('joinBiddingRoom', { biddingRoundId: roundData._id });
 
-        // Listen for new bids
         newSocket.on('newBidPlaced', () => {
-            // Silently re-fetch bids so we get the populated user names from the DB
             adminApi.bidding.getBids(roundData._id)
                 .then(res => {
                     if (res.data.success) {
@@ -80,10 +75,28 @@ const BiddingRoom = () => {
                 .catch(err => console.error("Live fetch error:", err));
         });
 
-        // Listen for closing events
-        newSocket.on('biddingClosed', () => {
-            fetchData(); // Refresh to update status to CLOSED
-            alert("Bidding time has expired. The room is now closed.");
+        newSocket.on('biddingClosed', (data) => {
+            fetchData(); // Refresh the database state
+
+            if (data && data.tie) {
+                // If the backend says it's a tie, save the tied users to state!
+                setTiedUsers(data.tiedUsers);
+
+                setInfoModal({
+                    show: true,
+                    title: 'Tie Detected!',
+                    message: 'Bidding closed and Tie detected. Please resolve the tie below.',
+                    isError: false
+                });
+            } else {
+                // Single winner or no bids
+                setInfoModal({
+                    show: true,
+                    title: 'Bidding Time Expired',
+                    message: 'The scheduled time has ended. The room is now closed automatically.',
+                    isError: false
+                });
+            }
         });
 
         setSocket(newSocket);
@@ -93,7 +106,6 @@ const BiddingRoom = () => {
         };
     }, [roundData?._id]);
 
-    // Populate the form with current resolved round limits if PENDING
     useEffect(() => {
         if (roundData && roundData.status === 'PENDING') {
             setTermsForm({
@@ -109,7 +121,7 @@ const BiddingRoom = () => {
         e.preventDefault();
 
         if (Number(termsForm.minBid) >= Number(termsForm.maxBid)) {
-            alert("Minimum bid must be strictly less than the maximum bid.");
+            setInfoModal({ show: true, title: 'Invalid Limits', message: 'Minimum bid must be strictly less than the maximum bid.', isError: true });
             return;
         }
 
@@ -122,60 +134,81 @@ const BiddingRoom = () => {
                 updateGroupDefaults: termsForm.updateGroupDefaults
             });
 
-            alert(res.data.message);
+            setInfoModal({ show: true, title: 'Success', message: res.data.message, isError: false });
             fetchData();
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to update bidding terms");
+            setInfoModal({ show: true, title: 'Update Failed', message: err.response?.data?.message || 'Failed to update bidding terms.', isError: true });
         } finally {
             setActionLoading(false);
         }
     };
 
-    const handleCloseBidding = async () => {
-        if (!window.confirm("Are you sure you want to close this bidding round? No more bids will be accepted.")) return;
+    // --- Action Prompts ---
+    const promptCloseBidding = () => {
+        setConfirmModal({
+            show: true, action: 'CLOSE', payload: null,
+            title: 'Close Bidding Window?',
+            message: 'Are you sure you want to manually close this bidding round? No more bids will be accepted.',
+            btnText: 'Yes, Close Bidding', btnColor: 'btn-danger-fill'
+        });
+    };
+
+    const promptResolveTie = (winnerUserId) => {
+        setConfirmModal({
+            show: true, action: 'RESOLVE_TIE', payload: winnerUserId,
+            title: 'Confirm Winner',
+            message: 'Are you sure you want to select this member as the winner of the tie?',
+            btnText: 'Confirm Winner', btnColor: 'btn-success-fill'
+        });
+    };
+
+    const promptFinalize = () => {
+        setConfirmModal({
+            show: true, action: 'FINALIZE', payload: null,
+            title: 'Finalize Month?',
+            message: 'This will close the payment phase and advance the group to the next month. Ensure all dues are cleared.',
+            btnText: 'Yes, Finalize Month', btnColor: 'btn-primary-fill'
+        });
+    };
+
+    // --- Execute Confirmed Action ---
+    const executeAction = async () => {
+        const { action, payload } = confirmModal;
+        setConfirmModal({ ...confirmModal, show: false }); // Hide confirm dialog
         setActionLoading(true);
+
         try {
-            const res = await adminApi.bidding.close({ biddingRoundId: roundData._id });
-            if (res.data.tie) {
-                alert("Bidding closed, but a tie occurred! Please resolve it.");
-                setTiedUsers(res.data.tiedUsers);
-            } else {
-                alert("Bidding closed successfully.");
+            if (action === 'CLOSE') {
+                const res = await adminApi.bidding.close({ biddingRoundId: roundData._id });
+                if (res.data.tie) {
+                    setInfoModal({ show: true, title: 'Tie Detected!', message: 'Bidding closed successfully, but multiple users placed the highest bid. Please resolve the tie below.', isError: false });
+                    setTiedUsers(res.data.tiedUsers);
+                } else {
+                    setInfoModal({ show: true, title: 'Bidding Closed', message: 'The bidding round has been closed. The payment phase is now active.', isError: false });
+                }
             }
+            else if (action === 'RESOLVE_TIE') {
+                await adminApi.bidding.resolveTie({ biddingRoundId: roundData._id, winnerUserId: payload });
+                setTiedUsers([]);
+                setInfoModal({ show: true, title: 'Tie Resolved', message: 'The winner has been successfully recorded. Payment phase is now active.', isError: false });
+            }
+            else if (action === 'FINALIZE') {
+                await adminApi.bidding.finalize({ biddingRoundId: roundData._id });
+                setInfoModal({ show: true, title: 'Month Finalized!', message: 'Group has been advanced to the next month successfully.', isError: false, redirectOnClose: true });
+            }
+
             fetchData();
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to close bidding");
+            setInfoModal({ show: true, title: 'Action Failed', message: err.response?.data?.message || 'An error occurred while processing.', isError: true });
         } finally {
             setActionLoading(false);
         }
     };
 
-    const handleResolveTie = async (winnerUserId) => {
-        if (!window.confirm("Confirm this user as the winner?")) return;
-        setActionLoading(true);
-        try {
-            await adminApi.bidding.resolveTie({ biddingRoundId: roundData._id, winnerUserId });
-            setTiedUsers([]);
-            fetchData();
-        } catch (err) {
-            alert(err.response?.data?.message || "Failed to resolve tie");
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleFinalize = async () => {
-        if (!window.confirm("Finalize round? This will advance the group to the next month.")) return;
-        setActionLoading(true);
-        try {
-            await adminApi.bidding.finalize({ biddingRoundId: roundData._id });
-            fetchData();
-            alert("Month finalized successfully!");
+    const handleInfoClose = () => {
+        setInfoModal({ ...infoModal, show: false });
+        if (infoModal.redirectOnClose) {
             navigate('/admin/bidding');
-        } catch (err) {
-            alert(err.response?.data?.message || "Cannot finalize. Make sure all members have completed their payments.");
-        } finally {
-            setActionLoading(false);
         }
     };
 
@@ -184,13 +217,8 @@ const BiddingRoom = () => {
     const formatScheduleDate = (dateString) => {
         if (!dateString) return "Date not set";
         return new Date(dateString).toLocaleString('en-IN', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
         });
     };
 
@@ -235,7 +263,6 @@ const BiddingRoom = () => {
                                 {roundData?.status === 'PENDING' && (
                                     <div className="action-box setup-box">
 
-                                        {/* --- UPDATED SCHEDULED BANNER --- */}
                                         <div className="scheduled-banner">
                                             <div className="scheduled-icon">
                                                 <Calendar size={28} />
@@ -254,14 +281,12 @@ const BiddingRoom = () => {
                                                 </h4>
                                             </div>
                                         </div>
-                                        {/* ---------------------------- */}
 
                                         <h4><Settings size={20} /> Update Bidding Terms</h4>
                                         <p className="setup-hint">
                                             The round will open automatically at the scheduled time. You can override the default constraints before it starts.
                                         </p>
 
-                                        {/* DEFAULT TERMS COMPARISON BOX */}
                                         <div className="default-terms-info">
                                             <Info size={16} />
                                             <span>
@@ -307,7 +332,7 @@ const BiddingRoom = () => {
                                     <div className="action-box live-box">
                                         <div className="live-indicator"><span className="pulse-dot bg-red"></span> Bidding is Live</div>
                                         <p>Members are currently placing bids. Close the window when ready.</p>
-                                        <button className="elder-btn-danger-solid full-width" onClick={handleCloseBidding} disabled={actionLoading}>
+                                        <button className="elder-btn-danger-solid full-width" onClick={promptCloseBidding} disabled={actionLoading}>
                                             <StopCircle size={20} /> Close Bidding Window
                                         </button>
                                     </div>
@@ -327,7 +352,7 @@ const BiddingRoom = () => {
                                                         <div className="feed-avatar"><User size={16} /></div>
                                                         <span title={user.name}>{user.name}</span>
                                                     </div>
-                                                    <button className="elder-btn-primary" onClick={() => handleResolveTie(user.userId)} disabled={actionLoading}>
+                                                    <button className="elder-btn-primary" onClick={() => promptResolveTie(user.userId)} disabled={actionLoading}>
                                                         Select Winner
                                                     </button>
                                                 </div>
@@ -344,7 +369,7 @@ const BiddingRoom = () => {
                                             <div><span>Winner Receives:</span> <strong>{formatCurrency(roundData.winnerReceivableAmount)}</strong></div>
                                             <div><span>Others Pay:</span> <strong>{formatCurrency(roundData.payablePerMember)} /ea</strong></div>
                                         </div>
-                                        <button className="elder-btn-primary full-width mt-1" onClick={handleFinalize} disabled={actionLoading}>
+                                        <button className="elder-btn-primary full-width mt-1" onClick={promptFinalize} disabled={actionLoading}>
                                             Finalize Month
                                         </button>
                                         <p className="final-hint">Ensure all collections/payouts are marked COMPLETED before finalizing.</p>
@@ -383,6 +408,59 @@ const BiddingRoom = () => {
                 </div>
 
             </main>
+
+            {/* --- 1. Custom Confirmation Modal --- */}
+            {confirmModal.show && (
+                <div className="admin-modal-overlay">
+                    <div className="admin-modal-card confirm-dialog-card">
+                        <div className={`confirm-icon-wrapper ${confirmModal.action === 'CLOSE' ? 'bg-red-light text-red' : 'bg-blue-light text-blue'}`}>
+                            {confirmModal.action === 'CLOSE' ? <AlertTriangle size={36} /> : <Info size={36} />}
+                        </div>
+                        <h3>{confirmModal.title}</h3>
+                        <p>{confirmModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                className="elder-btn-secondary"
+                                onClick={() => setConfirmModal({ ...confirmModal, show: false })}
+                                disabled={actionLoading}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className={`elder-btn-primary ${confirmModal.btnColor}`}
+                                onClick={executeAction}
+                                disabled={actionLoading}
+                            >
+                                {actionLoading ? 'Processing...' : confirmModal.btnText}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- 2. Custom Success/Error Info Modal --- */}
+            {infoModal.show && (
+                <div className="admin-modal-overlay">
+                    <div className="admin-modal-card confirm-dialog-card">
+                        <div className={`confirm-icon-wrapper ${infoModal.isError ? 'bg-red-light text-red' : 'bg-emerald-light text-emerald'}`}>
+                            {infoModal.isError ? <XCircle size={36} /> : <CheckCircle size={36} />}
+                        </div>
+                        <h3>{infoModal.title}</h3>
+                        <p>{infoModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                className={`elder-btn-primary full-width ${infoModal.isError ? 'btn-danger-fill' : 'btn-success-fill'}`}
+                                onClick={handleInfoClose}
+                            >
+                                Got it
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

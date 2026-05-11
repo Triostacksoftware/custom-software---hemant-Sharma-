@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, BellRing, User, TrendingUp, CheckCircle, Filter, Trophy, IndianRupee } from 'lucide-react';
+import { ArrowLeft, Search, BellRing, TrendingUp, CheckCircle, Filter, Trophy, ChevronLeft, ChevronRight, ChevronDown, XCircle } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
 import './Payouts.css';
 
@@ -19,8 +19,13 @@ const Payouts = () => {
     const [selectedGroupId, setSelectedGroupId] = useState('');
     const [activeGroups, setActiveGroups] = useState([]);
 
-    // Action States
+    // UI States
+    const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
     const [notifyingId, setNotifyingId] = useState(null);
+
+    // Modal States
+    const [confirmModal, setConfirmModal] = useState({ show: false, record: null, title: '', message: '' });
+    const [infoModal, setInfoModal] = useState({ show: false, title: '', message: '', isError: false });
 
     // Fetch Groups for Filter
     useEffect(() => {
@@ -75,15 +80,46 @@ const Payouts = () => {
         fetchPendingPayouts(1, searchQuery, selectedGroupId);
     };
 
-    const handleSendNotification = async (record) => {
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= pagination.totalPages) {
+            fetchPendingPayouts(newPage, searchQuery, selectedGroupId);
+        }
+    };
+
+    // --- Modal Notification Flow ---
+    const promptSendNotification = (record) => {
+        setConfirmModal({
+            show: true,
+            record: record,
+            title: 'Notify Winner?',
+            message: `Are you sure you want to send a payout notification to ${record.winnerName} for the pending amount of ₹${record.pendingAmount}?`
+        });
+    };
+
+    const executeNotification = async () => {
+        const record = confirmModal.record;
+        setConfirmModal({ show: false, record: null, title: '', message: '' });
+
         const uniqueId = `${record.groupId}_${record.winnerId}`;
         setNotifyingId(uniqueId);
+
         try {
-            // Mock API Delay
+            // Mock API Delay (Replace with actual API call when backend is ready)
             await new Promise(resolve => setTimeout(resolve, 800));
-            alert(`Notification sent to winner ${record.winnerName}. Please arrange for payout of ₹${record.pendingAmount}`);
+
+            setInfoModal({
+                show: true,
+                title: 'Notification Sent',
+                message: `Push notification sent successfully to ${record.winnerName} to collect ₹${record.pendingAmount}.`,
+                isError: false
+            });
         } catch (err) {
-            alert("Failed to send notification");
+            setInfoModal({
+                show: true,
+                title: 'Failed to Send',
+                message: err.response?.data?.message || "Failed to send notification. Please try again.",
+                isError: true
+            });
         } finally {
             setNotifyingId(null);
         }
@@ -92,6 +128,8 @@ const Payouts = () => {
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
     };
+
+    const selectedGroupObj = activeGroups.find(g => g._id === selectedGroupId);
 
     return (
         <div className="admin-payouts-container">
@@ -127,7 +165,7 @@ const Payouts = () => {
                     </div>
                 </div>
 
-                {/* Control Panel */}
+                {/* Control Panel (Search & Custom Filter) */}
                 <div className="payouts-control-panel">
                     <form className="admin-search-form" onSubmit={handleSearchSubmit}>
                         <div className="admin-search-input-wrapper">
@@ -144,17 +182,42 @@ const Payouts = () => {
                     </form>
 
                     <div className="filter-wrapper">
-                        <Filter size={18} className="filter-icon" />
-                        <select
-                            className="group-filter-select"
-                            value={selectedGroupId}
-                            onChange={(e) => setSelectedGroupId(e.target.value)}
-                        >
-                            <option value="">All Active Groups</option>
-                            {activeGroups.map(g => (
-                                <option key={g._id} value={g._id}>{g.name}</option>
-                            ))}
-                        </select>
+                        <Filter size={20} className="filter-icon" />
+                        <div className="custom-dropdown-container">
+                            <div
+                                className={`custom-dropdown-trigger filter-trigger ${groupDropdownOpen ? 'open' : ''}`}
+                                onClick={() => setGroupDropdownOpen(!groupDropdownOpen)}
+                            >
+                                <span className={selectedGroupId ? "selected-emp-name" : "placeholder-text"}>
+                                    {selectedGroupObj ? selectedGroupObj.name : "All Active Groups"}
+                                </span>
+                                <ChevronDown size={18} className={`dropdown-arrow ${groupDropdownOpen ? 'rotated' : ''}`} />
+                            </div>
+
+                            {groupDropdownOpen && (
+                                <div className="custom-dropdown-menu">
+                                    <div
+                                        className={`custom-dropdown-item ${!selectedGroupId ? 'selected' : ''}`}
+                                        onClick={() => { setSelectedGroupId(''); setGroupDropdownOpen(false); }}
+                                    >
+                                        <div className="emp-drop-info">
+                                            <h4>All Active Groups</h4>
+                                        </div>
+                                    </div>
+                                    {activeGroups.map(g => (
+                                        <div
+                                            key={g._id}
+                                            className={`custom-dropdown-item ${selectedGroupId === g._id ? 'selected' : ''}`}
+                                            onClick={() => { setSelectedGroupId(g._id); setGroupDropdownOpen(false); }}
+                                        >
+                                            <div className="emp-drop-info">
+                                                <h4>{g.name}</h4>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -167,7 +230,7 @@ const Payouts = () => {
                     {loading ? (
                         <div className="elder-empty-card">
                             <div className="spinner"></div>
-                            <p>Loading pending payouts...</p>
+                            <p className="loading-text">Loading pending payouts...</p>
                         </div>
                     ) : error ? (
                         <div className="elder-empty-card">
@@ -183,51 +246,46 @@ const Payouts = () => {
                             <p>All current winners have received their full amounts.</p>
                         </div>
                     ) : (
-                        <div className="elder-list-container">
+                        <div className="compact-list-container">
                             {payouts.map((record) => {
                                 const uniqueId = `${record.groupId}_${record.winnerId}`;
                                 const isNotifying = notifyingId === uniqueId;
 
                                 return (
-                                    <div key={uniqueId} className="elder-list-card payout-card">
-                                        <div className="pay-card-left">
-                                            <div className="icon-wrapper icon-emerald"><Trophy size={24} /></div>
-                                            <div className="pay-card-info">
-                                                <h3 className="elder-card-title">{record.winnerName}</h3>
-                                                <p className="pay-phone">{record.winnerPhone || 'No phone number'}</p>
-                                                <div className="pay-group-badges">
-                                                    <span className="pay-badge group-name-badge">{record.groupName}</span>
-                                                    <span className="pay-badge month-badge">Month {record.currentMonth} Winner</span>
+                                    <div key={uniqueId} className="compact-pay-row">
+                                        <div className="cp-left">
+                                            <div className="cp-avatar bg-gold-light text-gold">
+                                                <Trophy size={18} />
+                                            </div>
+                                            <div className="cp-info">
+                                                <h4 className="cp-name" title={record.winnerName}>{record.winnerName}</h4>
+                                                <div className="cp-meta">
+                                                    <span>{record.winnerPhone || 'No phone'}</span>
+                                                    <span className="cp-dot">•</span>
+                                                    <span className="cp-group-text" title={record.groupName}>
+                                                        {record.groupName} <span className="cp-month">(M{record.currentMonth})</span>
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div className="pay-card-right">
-                                            <div className="pay-financials">
-                                                <div className="pay-fin-detail">
-                                                    <span>Total Payout:</span>
-                                                    <strong>{formatCurrency(record.winnerReceivableAmount)}</strong>
-                                                </div>
-                                                <div className="pay-fin-detail">
-                                                    <span>Winning Bid:</span>
-                                                    <span className="bid-amount-text">{formatCurrency(record.winningBidAmount)}</span>
-                                                </div>
-                                                <div className="pay-fin-detail">
-                                                    <span>Distributed:</span>
-                                                    <strong className="text-blue">{formatCurrency(record.alreadyReceived)}</strong>
-                                                </div>
-                                                <div className="pay-fin-detail pending-detail">
-                                                    <span>Pending:</span>
-                                                    <strong className="text-emerald">{formatCurrency(record.pendingAmount)}</strong>
-                                                </div>
+                                        <div className="cp-right">
+                                            <div className="cp-financials">
+                                                <span className="cp-pending text-emerald">{formatCurrency(record.pendingAmount)}</span>
+                                                <span
+                                                    className="cp-paid"
+                                                    title={`Total Payout: ${formatCurrency(record.winnerReceivableAmount)} | Winning Bid: ${formatCurrency(record.winningBidAmount)} | Distributed: ${formatCurrency(record.alreadyReceived)}`}
+                                                >
+                                                    Total: {formatCurrency(record.winnerReceivableAmount)}
+                                                </span>
                                             </div>
-
                                             <button
-                                                className="elder-btn-success-solid notify-btn"
-                                                onClick={() => handleSendNotification(record)}
+                                                className="cp-notify-btn"
+                                                onClick={() => promptSendNotification(record)}
                                                 disabled={isNotifying}
+                                                title="Send Notification"
                                             >
-                                                {isNotifying ? 'Sending...' : <><BellRing size={18} /> Notify</>}
+                                                {isNotifying ? <span className="spinner-micro"></span> : <><BellRing size={16} /><span className="remind-txt">Notify</span></>}
                                             </button>
                                         </div>
                                     </div>
@@ -236,7 +294,80 @@ const Payouts = () => {
                         </div>
                     )}
                 </section>
+
+                {/* Pagination Controls */}
+                {!loading && payouts.length > 0 && pagination.totalPages > 1 && (
+                    <div className="elder-pagination">
+                        <button
+                            className="page-btn"
+                            disabled={pagination.currentPage === 1}
+                            onClick={() => handlePageChange(pagination.currentPage - 1)}
+                        >
+                            <ChevronLeft size={24} /> Prev
+                        </button>
+                        <span className="page-info">
+                            Page {pagination.currentPage} of {pagination.totalPages}
+                        </span>
+                        <button
+                            className="page-btn"
+                            disabled={pagination.currentPage === pagination.totalPages}
+                            onClick={() => handlePageChange(pagination.currentPage + 1)}
+                        >
+                            Next <ChevronRight size={24} />
+                        </button>
+                    </div>
+                )}
             </main>
+
+            {/* --- 1. Custom Confirmation Modal --- */}
+            {confirmModal.show && (
+                <div className="admin-modal-overlay">
+                    <div className="admin-modal-card confirm-dialog-card">
+                        <div className="confirm-icon-wrapper bg-emerald-light text-emerald">
+                            <BellRing size={36} />
+                        </div>
+                        <h3>{confirmModal.title}</h3>
+                        <p>{confirmModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                className="elder-btn-secondary"
+                                onClick={() => setConfirmModal({ ...confirmModal, show: false })}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="elder-btn-primary btn-success-fill"
+                                onClick={executeNotification}
+                            >
+                                Yes, Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- 2. Custom Success/Error Info Modal --- */}
+            {infoModal.show && (
+                <div className="admin-modal-overlay">
+                    <div className="admin-modal-card confirm-dialog-card">
+                        <div className={`confirm-icon-wrapper ${infoModal.isError ? 'bg-red-light text-red' : 'bg-emerald-light text-emerald'}`}>
+                            {infoModal.isError ? <XCircle size={36} /> : <CheckCircle size={36} />}
+                        </div>
+                        <h3>{infoModal.title}</h3>
+                        <p>{infoModal.message}</p>
+
+                        <div className="modal-actions" style={{ marginTop: '1.5rem', width: '100%' }}>
+                            <button
+                                className={`elder-btn-primary full-width ${infoModal.isError ? 'btn-danger-fill' : 'btn-success-fill'}`}
+                                onClick={() => setInfoModal({ ...infoModal, show: false })}
+                            >
+                                Got it
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

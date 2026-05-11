@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, IndianRupee, Folder, CheckCircle, AlertTriangle, ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, User, IndianRupee, Folder, CheckCircle, AlertTriangle, ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
 import './Members.css';
 
@@ -70,6 +70,12 @@ const MemberDetails = () => {
 
     const { user, financialSummary, groups } = details;
 
+    // --- NET POSITION CALCULATION ---
+    const netPosition = financialSummary.totalReceivedAcrossGroups - financialSummary.totalPaidAcrossGroups;
+    const isNetPositive = netPosition > 0;
+    const isNetNegative = netPosition < 0;
+    const displayNetPosition = formatCurrency(Math.abs(netPosition));
+
     return (
         <div className="admin-members-container">
             {/* Header */}
@@ -104,7 +110,7 @@ const MemberDetails = () => {
                         </div>
                     </div>
 
-                    {/* Financial Summary Card */}
+                    {/* Financial Summary Card (Now a 2x2 Grid) */}
                     <div className="global-stats-card">
                         <div className="stat-box">
                             <div className="stat-icon icon-slate"><Folder size={20} /></div>
@@ -113,6 +119,20 @@ const MemberDetails = () => {
                                 <h3>{financialSummary.totalGroupsWon} / {financialSummary.totalGroups}</h3>
                             </div>
                         </div>
+
+                        {/* NET POSITION CARD */}
+                        <div className={`stat-box ${isNetPositive ? 'border-emerald' : isNetNegative ? 'border-red' : ''}`}>
+                            <div className={`stat-icon ${isNetPositive ? 'bg-emerald-light text-emerald' : isNetNegative ? 'bg-red-light text-red' : 'icon-slate'}`}>
+                                {isNetPositive ? <TrendingUp size={20} /> : isNetNegative ? <TrendingDown size={20} /> : <IndianRupee size={20} />}
+                            </div>
+                            <div className="stat-text">
+                                <p>Net Position (P/L)</p>
+                                <h3 className={isNetPositive ? 'text-emerald' : isNetNegative ? 'text-red' : 'text-slate'}>
+                                    {isNetPositive ? '+' : isNetNegative ? '-' : ''}{displayNetPosition}
+                                </h3>
+                            </div>
+                        </div>
+
                         <div className="stat-box">
                             <div className="stat-icon bg-blue-light text-blue"><IndianRupee size={20} /></div>
                             <div className="stat-text">

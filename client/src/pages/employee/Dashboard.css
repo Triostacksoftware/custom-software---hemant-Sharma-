@@ -82,7 +82,7 @@
     margin: 0 auto;
 }
 
-/* Stat Cards */
+/* Stat Cards - NEW STACKED DESIGN */
 .emp-stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -92,12 +92,12 @@
 
 .emp-stat-card {
     background: white;
-    padding: 1.25rem;
+    padding: 1.15rem;
     border-radius: 12px;
     border: 1px solid #e2e8f0;
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    flex-direction: column;
+    gap: 0.85rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
@@ -109,7 +109,7 @@
     border-bottom: 3px solid #10b981;
 }
 
-.emp-stat-card.border-blue {
+.border-blue {
     border-bottom: 4px solid #3b82f6;
 }
 
@@ -117,14 +117,25 @@
     border-bottom: 3px solid #64748b;
 }
 
+.stat-top {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
 .stat-icon {
-    height: 48px;
-    width: 48px;
-    border-radius: 12px;
+    height: 38px;
+    width: 38px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+
+.stat-svg {
+    width: 20px;
+    height: 20px;
 }
 
 .bg-red-light {
@@ -159,18 +170,21 @@
     color: #475569;
 }
 
-.stat-info p {
-    margin: 0 0 0.25rem 0;
+.stat-top p {
+    margin: 0;
     color: #64748b;
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.8rem;
+    font-weight: 700;
     text-transform: uppercase;
+    line-height: 1.2;
 }
 
-.stat-info h3 {
+.stat-bottom h3 {
     margin: 0;
     font-size: 1.4rem;
     font-weight: 800;
+    word-break: break-word;
+    /* Prevents overflow if amount gets too large */
 }
 
 /* Filter Bar */
@@ -232,7 +246,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    /* Tightened gap for density */
 }
 
 .empty-text {
@@ -242,17 +255,15 @@
     font-style: italic;
 }
 
-/* === NEW COMPACT LIST DESIGN === */
+/* === COMPACT LIST DESIGN === */
 .compact-task-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.6rem 0.85rem;
-    /* Reduced vertical padding */
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    /* Tighter radius */
     transition: all 0.2s ease;
 }
 
@@ -276,7 +287,6 @@
     flex-direction: column;
     gap: 0.15rem;
     min-width: 0;
-    /* Ensures text truncation works */
     margin-right: 0.5rem;
 }
 
@@ -579,7 +589,7 @@
     background: #2563eb;
 }
 
-/* === CUSTOM DROPDOWN (Global for Dashboard) === */
+/* === CUSTOM DROPDOWN === */
 .custom-dropdown-container {
     position: relative;
 }
@@ -600,7 +610,6 @@
 
 .filter-trigger {
     padding: 0.6rem 1rem;
-    /* Slightly smaller for the filter bar */
     border: 1px solid #e2e8f0;
 }
 
@@ -707,7 +716,7 @@
     font-style: italic;
 }
 
-/* Responsive */
+/* === RESPONSIVE LAYOUT EXPERT TWEAKS === */
 @media (max-width: 1024px) {
     .emp-stats-grid {
         grid-template-columns: 1fr 1fr;
@@ -721,6 +730,35 @@
         padding: 1.25rem;
     }
 
+    /* Perfect adjustments for iPhone 14 Pro Max & similar */
+    .emp-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.65rem;
+    }
+
+    .emp-stat-card {
+        padding: 0.85rem;
+        gap: 0.6rem;
+    }
+
+    .stat-icon {
+        height: 32px;
+        width: 32px;
+    }
+
+    .stat-svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .stat-top p {
+        font-size: 0.75rem;
+    }
+
+    .stat-bottom h3 {
+        font-size: 1.25rem;
+    }
+
     .emp-filter-bar {
         flex-direction: row;
         align-items: center;
@@ -730,7 +768,6 @@
         width: 100% !important;
         margin-left: 0 !important;
         flex: 1;
-        /* Allows the dropdown to fluidly fill the remaining space next to the icon */
     }
 
     .emp-lists-grid {
@@ -745,7 +782,6 @@
         padding: 1.5rem;
     }
 
-    /* Compact lists stay horizontal on mobile */
     .compact-task-row {
         flex-direction: row;
         align-items: center;
@@ -777,7 +813,7 @@
     }
 }
 
-/* === NOTIFICATION MODAL STYLES (Kept intact) === */
+/* === NOTIFICATION MODAL STYLES === */
 .notification-wrapper {
     position: relative;
 }
@@ -1027,8 +1063,7 @@
     }
 }
 
-
-/* === DIALOG MODAL STYLES (For Success & Confirmations) === */
+/* === DIALOG MODAL STYLES === */
 .confirm-dialog-card {
     text-align: center;
     max-width: 400px;
