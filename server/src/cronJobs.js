@@ -10,74 +10,50 @@ const {
     notifyMember
 } = require("./services/notificationService.js");
 
-// ─────────────────────────────────────────────────────────────────────────────
-// All cron jobs run in IST (Asia/Kolkata) using node-cron's timezone option.
-// This means cron expressions are written in IST directly — no UTC conversion needed.
-//
-// Schedule:
-//   9:00 AM IST  — morning reminder to admin for today's bidding
-//   12:00 PM IST — midday reminder to admin if bidding not yet opened
-//   4:00 PM IST  — final reminder to admin (1 hour before auto-open)
-//   5:00 PM IST  — auto-open bidding for all groups scheduled today
-//   8:00 PM IST  — auto-close all OPEN bidding rounds
-// ─────────────────────────────────────────────────────────────────────────────
-
+// All cron jobs run in Indian Standard Time (IST)
 const TIMEZONE = "Asia/Kolkata";
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: get today's date range in IST (start of day to end of day)
-// Used to query rounds scheduled for today.
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Helper: Calculates the start and end of the current day in UTC, 
+ * adjusted for the IST timezone. Used to query today's scheduled rounds.
+ */
 function getTodayRangeIST() {
     const now = new Date();
-
-    // IST offset = UTC + 5:30 = 330 minutes
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
-    // Current time in IST as a Date object (still UTC internally, shifted for calculation)
+    // Shift current UTC time to IST internally for calculation
     const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
 
-    // Start of today in IST: midnight IST → back to UTC for DB query
-    const startOfDayIST = new Date(
-        Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 0, 0, 0)
-    );
+    // Get 00:00:00 and 23:59:59 in IST, then shift back to UTC for MongoDB queries
+    const startOfDayIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 0, 0, 0));
     const startUTC = new Date(startOfDayIST.getTime() - IST_OFFSET_MS);
 
-    // End of today in IST: 23:59:59 IST → back to UTC
-    const endOfDayIST = new Date(
-        Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 23, 59, 59)
-    );
+    const endOfDayIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 23, 59, 59));
     const endUTC = new Date(endOfDayIST.getTime() - IST_OFFSET_MS);
 
     return { startUTC, endUTC };
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: fetch all PENDING rounds scheduled for today with their group names
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Helper: Fetches all PENDING bidding rounds scheduled for today.
+ */
 async function getPendingRoundsScheduledToday() {
     const { startUTC, endUTC } = getTodayRangeIST();
 
-    const rounds = await BiddingRound.find({
+    return await BiddingRound.find({
         status: "PENDING",
         scheduledBiddingDate: { $gte: startUTC, $lte: endUTC }
     })
         .populate("groupId", "name defaultBidTerms totalMembers monthlyContribution")
         .lean();
-
-    return rounds;
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRON 1 — 9:00 AM IST daily
-// First morning reminder to admin about today's scheduled bidding rounds.
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CRON 1: 9:00 AM IST 
+ * Initial morning reminder to admins and members about today's bidding.
+ */
 function scheduleNineAmReminder(io) {
     cron.schedule("0 9 * * *", async () => {
-        console.log("[CRON 9AM] Running bidding day reminder");
         try {
             const rounds = await getPendingRoundsScheduledToday();
             if (!rounds.length) return;
@@ -88,6 +64,7 @@ function scheduleNineAmReminder(io) {
                 const maxBid = round.maxBid || group.defaultBidTerms?.maxBid || 0;
                 const step = round.bidMultiple || group.defaultBidTerms?.bidMultiple || 1;
 
+                // Notify Admins
                 await notifyAdmins(
                     `Bidding Today — "${group.name}" 📅`,
                     `Bidding for "${group.name}" Month ${round.monthNumber} is scheduled today at 5:00 PM. Current terms: Min ₹${minBid}, Max ₹${maxBid}, Step ₹${step}. Update terms before 5 PM if needed.`,
@@ -96,7 +73,7 @@ function scheduleNineAmReminder(io) {
                     group._id
                 );
 
-                // Also remind all group members that bidding is today
+                // Notify Members
                 await notifyGroupMembers(
                     group._id,
                     `Bidding Today at 5 PM 🔔`,
@@ -111,14 +88,12 @@ function scheduleNineAmReminder(io) {
     }, { timezone: TIMEZONE });
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRON 2 — 12:00 PM IST daily
-// Midday reminder to admin — 5 hours before auto-open.
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CRON 2: 12:00 PM IST 
+ * Midday reminder (5 hours before open) for both admins and members.
+ */
 function scheduleTwelvePmReminder(io) {
     cron.schedule("0 12 * * *", async () => {
-        console.log("[CRON 12PM] Running midday bidding reminder");
         try {
             const rounds = await getPendingRoundsScheduledToday();
             if (!rounds.length) return;
@@ -129,12 +104,22 @@ function scheduleTwelvePmReminder(io) {
                 const maxBid = round.maxBid || group.defaultBidTerms?.maxBid || 0;
                 const step = round.bidMultiple || group.defaultBidTerms?.bidMultiple || 1;
 
+                // Notify Admins
                 await notifyAdmins(
                     `Bidding in 5 Hours — "${group.name}" ⏰`,
                     `Reminder: Bidding for "${group.name}" Month ${round.monthNumber} auto-opens at 5:00 PM. Terms set: Min ₹${minBid}, Max ₹${maxBid}, Step ₹${step}. You have until 4:59 PM to update them.`,
                     "BIDDING_REMINDER",
                     io,
                     group._id
+                );
+
+                // Notify Members
+                await notifyGroupMembers(
+                    group._id,
+                    `Bidding in 5 Hours ⏰`,
+                    `Reminder: Bidding for "${group.name}" Month ${round.monthNumber} opens today at 5:00 PM.`,
+                    "BIDDING_REMINDER",
+                    io
                 );
             }
         } catch (err) {
@@ -143,14 +128,12 @@ function scheduleTwelvePmReminder(io) {
     }, { timezone: TIMEZONE });
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRON 3 — 4:00 PM IST daily
-// Final reminder — 1 hour before auto-open. Last chance to update terms.
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CRON 3: 4:00 PM IST
+ * Final reminder (1 hour before open) for admins (last chance to update) and members.
+ */
 function scheduleFourPmReminder(io) {
     cron.schedule("0 16 * * *", async () => {
-        console.log("[CRON 4PM] Running final bidding reminder");
         try {
             const rounds = await getPendingRoundsScheduledToday();
             if (!rounds.length) return;
@@ -161,12 +144,22 @@ function scheduleFourPmReminder(io) {
                 const maxBid = round.maxBid || group.defaultBidTerms?.maxBid || 0;
                 const step = round.bidMultiple || group.defaultBidTerms?.bidMultiple || 1;
 
+                // Notify Admins
                 await notifyAdmins(
                     `🚨 Bidding Opens in 1 Hour — "${group.name}"`,
-                    `Final reminder: Bidding for "${group.name}" Month ${round.monthNumber} auto-opens at 5:00 PM with terms Min ₹${minBid}, Max ₹${maxBid}, Step ₹${step}. This is your last chance to update the terms.`,
+                    `Final reminder: Bidding for "${group.name}" Month ${round.monthNumber} auto-opens at 5:00 PM with terms Min ₹${minBid}, Max ₹${maxBid}, Step ₹${step}. Last chance to update.`,
                     "BIDDING_REMINDER",
                     io,
                     group._id
+                );
+
+                // Notify Members
+                await notifyGroupMembers(
+                    group._id,
+                    `🚨 Bidding Opens in 1 Hour!`,
+                    `Final reminder: Bidding for "${group.name}" Month ${round.monthNumber} opens at 5:00 PM. Get ready!`,
+                    "BIDDING_REMINDER",
+                    io
                 );
             }
         } catch (err) {
@@ -175,49 +168,37 @@ function scheduleFourPmReminder(io) {
     }, { timezone: TIMEZONE });
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRON 4 — 5:00 PM IST daily
-// Auto-open bidding for all PENDING rounds scheduled today.
-// Uses terms already stored on the round (from defaultBidTerms or admin override).
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CRON 4: 5:00 PM IST
+ * Auto-opens bidding for all PENDING rounds scheduled today.
+ */
 function scheduleFivePmAutoOpen(io) {
     cron.schedule("0 17 * * *", async () => {
-        console.log("[CRON 5PM] Running auto-open bidding");
         try {
             const rounds = await getPendingRoundsScheduledToday();
-            if (!rounds.length) {
-                console.log("[CRON 5PM] No rounds to open today");
-                return;
-            }
+            if (!rounds.length) return;
 
             const now = new Date();
-            const eightPmIST = new Date();
-            // 8 PM IST = now set to 20:00 IST
-            // We calculate endedAt as today at 8PM IST in UTC
             const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
             const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
-            const eightPmUTC = new Date(
-                Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 20, 0, 0)
-            );
+
+            // Set close time to 8:00 PM IST today
+            const eightPmUTC = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate(), 20, 0, 0));
             const endedAt = new Date(eightPmUTC.getTime() - IST_OFFSET_MS);
 
             for (const round of rounds) {
                 const group = round.groupId;
 
-                // Resolve terms — round fields take priority (admin may have overridden)
-                // then fall back to group defaultBidTerms
+                // Fallback to group default terms if round-specific terms are missing
                 const minBid = round.minBid > 0 ? round.minBid : group.defaultBidTerms?.minBid;
                 const maxBid = round.maxBid > 0 ? round.maxBid : group.defaultBidTerms?.maxBid;
                 const bidMultiple = round.bidMultiple > 1 ? round.bidMultiple : group.defaultBidTerms?.bidMultiple || 1;
 
-                // Skip if terms are still not valid — should not happen if createGroup enforced them
+                // Validate terms before opening
                 if (!minBid || !maxBid || minBid <= 0 || maxBid <= 0 || minBid >= maxBid) {
-                    console.error(`[CRON 5PM] Invalid bid terms for group ${group.name} — skipping`);
-
                     await notifyAdmins(
                         `⚠️ Bidding Could Not Open — "${group.name}"`,
-                        `Bidding for "${group.name}" Month ${round.monthNumber} could not auto-open. Bid terms are invalid. Please open bidding manually.`,
+                        `Bidding for "${group.name}" Month ${round.monthNumber} could not auto-open due to invalid bid terms. Please open manually.`,
                         "BIDDING_OPEN",
                         io,
                         group._id
@@ -225,7 +206,7 @@ function scheduleFivePmAutoOpen(io) {
                     continue;
                 }
 
-                // Open the round
+                // Open Bidding
                 await BiddingRound.findByIdAndUpdate(round._id, {
                     $set: {
                         status: "OPEN",
@@ -237,7 +218,7 @@ function scheduleFivePmAutoOpen(io) {
                     }
                 });
 
-                // Emit socket event to bidding room
+                // Emit real-time update to active clients
                 io.to(round._id.toString()).emit("biddingOpened", {
                     biddingRoundId: round._id,
                     monthNumber: round.monthNumber,
@@ -248,7 +229,6 @@ function scheduleFivePmAutoOpen(io) {
                 });
 
                 const body = `Bidding is now live for "${group.name}" — Month ${round.monthNumber}. Bids close at 8:00 PM.`;
-
                 await notifyGroupMembers(group._id, "Bidding is Live! 🔨", body, "BIDDING_OPEN", io);
                 await notifyAllEmployees("Bidding is Live! 🔨", body, "BIDDING_OPEN", io, group._id);
 
@@ -260,25 +240,17 @@ function scheduleFivePmAutoOpen(io) {
     }, { timezone: TIMEZONE });
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CRON 5 — 8:00 PM IST daily
-// Auto-close all OPEN bidding rounds.
-// Reuses the same winner calculation logic as the closeBidding controller
-// but runs directly without an HTTP request.
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * CRON 5: 8:00 PM IST
+ * Auto-closes all OPEN bidding rounds and processes results.
+ */
 function scheduleEightPmAutoClose(io) {
     cron.schedule("0 20 * * *", async () => {
-        console.log("[CRON 8PM] Running auto-close bidding");
         try {
             const openRounds = await BiddingRound.find({ status: "OPEN" })
-                .populate("groupId", "name totalMembers monthlyContribution members")
+                // FIX: Added totalPoolAmount to population string
+                .populate("groupId", "name totalMembers monthlyContribution totalPoolAmount members")
                 .lean();
-
-            if (!openRounds.length) {
-                console.log("[CRON 8PM] No open rounds to close");
-                return;
-            }
 
             for (const round of openRounds) {
                 await autoCloseRound(round, io);
@@ -289,27 +261,21 @@ function scheduleEightPmAutoClose(io) {
     }, { timezone: TIMEZONE });
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: autoCloseRound
-// Contains the same winner calculation logic as the closeBidding controller.
-// Extracted here so it can be called cleanly by the cron job.
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Core logic to close a bidding round, calculate the winner/dividends, and update records.
+ */
 async function autoCloseRound(round, io) {
     try {
-        const group = round.groupId; // already populated
-
+        const group = round.groupId;
         const bids = await Bid.find({ biddingRoundId: round._id })
             .sort({ bidAmount: -1 })
             .populate("userId", "name")
             .lean();
 
-        // No bids placed
+        // Handle Case: No bids placed
         if (bids.length === 0) {
             await BiddingRound.findByIdAndUpdate(round._id, { $set: { status: "CLOSED" } });
-
             io.to(round._id.toString()).emit("biddingClosed", { message: "Bidding time expired. No bids placed." });
-
             await notifyAdmins(
                 `Bidding Closed — No Bids — "${group.name}"`,
                 `Bidding for "${group.name}" Month ${round.monthNumber} closed at 8 PM with no bids. Please reopen bidding.`,
@@ -317,20 +283,21 @@ async function autoCloseRound(round, io) {
                 io,
                 group._id
             );
-
-            console.log(`[CRON 8PM] Closed ${group.name} Month ${round.monthNumber} — no bids`);
             return;
         }
 
         const highestBidAmount = bids[0].bidAmount;
         const highestBidders = bids.filter(b => b.bidAmount === highestBidAmount);
 
-        // Tie
+        // Handle Case: Tie for highest bid
         if (highestBidders.length > 1) {
             await BiddingRound.findByIdAndUpdate(round._id, { $set: { status: "CLOSED" } });
 
+            // FIX: Emit the exact same object structure as the manual HTTP response
             io.to(round._id.toString()).emit("biddingClosed", {
+                success: true,
                 tie: true,
+                message: "Tie detected. Admin must select winner.",
                 tiedUsers: highestBidders.map(b => ({
                     userId: b.userId._id,
                     name: b.userId.name,
@@ -346,17 +313,26 @@ async function autoCloseRound(round, io) {
                 group._id
             );
 
-            console.log(`[CRON 8PM] Tie detected for ${group.name} Month ${round.monthNumber}`);
+            console.log(`[CRON 8PM] Tie detected for ${group.name} Month ${round.monthNumber} - Admin Notified`);
             return;
         }
 
-        // Single winner
+        // Handle Case: Clear Winner
         const winnerBid = highestBidders[0];
-        const winningBidAmount = winnerBid.bidAmount;
-        const dividendPerMember = Math.floor(winningBidAmount / group.totalMembers);
-        const payablePerMember = group.monthlyContribution - dividendPerMember;
-        const winnerReceivable = group.totalPoolAmount - winningBidAmount - payablePerMember;
 
+        // FIX: Safely extract and cast numbers to prevent NaN errors
+        const winningBidAmount = Number(winnerBid.bidAmount) || 0;
+        const totalMembers = Number(group.totalMembers) || 1;
+        const monthlyContribution = Number(group.monthlyContribution) || 0;
+
+        // FIX: Fetch totalPoolAmount from the ROUND object, with a fallback
+        const poolAmount = Number(round.totalPoolAmount) || (totalMembers * monthlyContribution);
+
+        const dividendPerMember = Math.floor(winningBidAmount / totalMembers);
+        const payablePerMember = monthlyContribution - dividendPerMember;
+        const winnerReceivable = poolAmount - winningBidAmount - payablePerMember;
+
+        // Transition round to PAYMENT_OPEN
         await BiddingRound.findByIdAndUpdate(round._id, {
             $set: {
                 status: "PAYMENT_OPEN",
@@ -368,7 +344,7 @@ async function autoCloseRound(round, io) {
             }
         });
 
-        // Update winner in group members
+        // Flag winner in group members array
         await Groups.updateOne(
             { _id: group._id, "members.userId": winnerBid.userId._id },
             {
@@ -380,13 +356,14 @@ async function autoCloseRound(round, io) {
             }
         );
 
-        // Set non-winners to PENDING
+        // Flag non-winners as PENDING for payment
         await Groups.updateOne(
             { _id: group._id },
             { $set: { "members.$[elem].currentPaymentStatus": "PENDING" } },
             { arrayFilters: [{ "elem.userId": { $ne: winnerBid.userId._id } }] }
         );
 
+        // Emit real-time closing data
         io.to(round._id.toString()).emit("biddingClosed", {
             winnerUserId: winnerBid.userId._id,
             winnerName: winnerBid.userId.name,
@@ -396,7 +373,7 @@ async function autoCloseRound(round, io) {
             payablePerMember
         });
 
-        // Notify members and employees
+        // Dispatch notifications
         await notifyGroupMembers(
             group._id,
             "Bidding Result — Payments Now Open 🎉",
@@ -429,14 +406,10 @@ async function autoCloseRound(round, io) {
     }
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// initCronJobs — call this once after DB connects in app.js
-//
-// Usage in app.js (already has the commented placeholder):
-//   const { initCronJobs } = require("./cronJobs");
-//   initCronJobs(io);
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Initializes all automated cron jobs.
+ * Call this once during app startup after the DB connects.
+ */
 function initCronJobs(io) {
     scheduleNineAmReminder(io);
     scheduleTwelvePmReminder(io);
@@ -444,7 +417,7 @@ function initCronJobs(io) {
     scheduleFivePmAutoOpen(io);
     scheduleEightPmAutoClose(io);
 
-    console.log("Cron jobs initialised — bidding automation active (IST timezone)");
+    console.log("Cron jobs initialized — bidding automation active (IST timezone)");
 }
 
 module.exports = { initCronJobs };

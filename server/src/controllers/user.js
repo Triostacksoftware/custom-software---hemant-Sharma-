@@ -855,7 +855,7 @@ exports.getGroups = async (req, res, next) => {
                     name: group.name,
                     monthlyContribution: group.monthlyContribution,
                     totalMembers: group.totalMembers,
-                    currentMemberCount: group.members.length,
+                    currentMemberCount: group.members.length + 1,   //+1 because the admin is by default a member
                     status: group.status
                 });
             } else {
@@ -877,7 +877,7 @@ exports.getGroups = async (req, res, next) => {
                     name: group.name,
                     monthlyContribution: group.monthlyContribution,
                     totalMembers: group.totalMembers,
-                    currentMemberCount: group.members.length,
+                    currentMemberCount: group.members.length + 1,   //+1 because the admin is by default a member
                     status: group.status,
                     isFull,
                     hasRequestedToJoin
@@ -1138,16 +1138,17 @@ exports.getGroupDetails = async (req, res, next) => {
             pendingPayout: isCurrentWinner ? (currentRound?.winnerReceivableAmount || 0) : 0
         };
 
-        //Format transactions and accumulate pending amounts
+        // Format transactions and calculate pending amounts accurately
         const formattedTransactions = transactions.map(tx => {
 
-            // Accumulate pending amounts for the member info panel
-            if (tx.status !== "COMPLETED") {
+            // Only deduct amounts from the CURRENT month's dues
+            // and ONLY if the payment was actually completed.
+            if (tx.status === "COMPLETED" && tx.monthNumber === group.currentMonth) {
                 if (tx.type === "CONTRIBUTION") {
-                    memberInfo.pendingContribution += tx.amount;
+                    memberInfo.pendingContribution -= tx.amount;
                 }
                 if (tx.type === "WINNER_PAYOUT") {
-                    memberInfo.pendingPayout += tx.amount;
+                    memberInfo.pendingPayout -= tx.amount;
                 }
             }
 
@@ -1159,8 +1160,11 @@ exports.getGroupDetails = async (req, res, next) => {
                 status: tx.status,
                 createdAt: tx.createdAt
             };
-
         });
+
+        // Safeguard to ensure we don't display negative pending amounts due to over-payments or data bugs
+        memberInfo.pendingContribution = Math.max(0, memberInfo.pendingContribution);
+        memberInfo.pendingPayout = Math.max(0, memberInfo.pendingPayout);
 
         //Build current bidding round data and fetch live bids
         let currentBiddingRound = null;
