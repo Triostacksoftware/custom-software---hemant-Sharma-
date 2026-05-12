@@ -3,51 +3,74 @@ const router = express.Router();
 const employeeController = require("../controllers/employee.js");
 const authentication = require("../middleware/authentication.js");
 
+// ============================================================================
+// 1. AUTHENTICATION & PUBLIC
+// ============================================================================
 
-//endpoint for new employee registration
+// Endpoint for new employee registration
 router.post('/employee/signup/', employeeController.employeeSignup);
 
-//endpoint for employee login
+// Endpoint for employee login
 router.post('/employee/login/', employeeController.employeeLogin);
 
-//endpoint to log monthly contribution
-router.post('/employee/log_transaction/', authentication.authenticate, employeeController.logTransaction);
 
-//endpoint to fetch employee dashboard
+// ============================================================================
+// 2. DASHBOARD & GROUPS
+// ============================================================================
+
+// Endpoint to fetch employee dashboard
 router.get('/employee/dashboard/', authentication.authenticate, employeeController.getEmployeeDashboard);
 
-//endpoint to get the list of active groups
+// Endpoint to get the list of active groups
 router.get('/employee/groups/active', authentication.authenticate, employeeController.getActiveGroups);
 
-//endpoint to fetch members whose contribution is pending
+
+// ============================================================================
+// 3. TRANSACTIONS & COLLECTIONS
+// ============================================================================
+
+// Endpoint to fetch members whose contribution/payout is pending
 router.get('/employee/pending_members/', authentication.authenticate, employeeController.getTransactionPendingMembers);
 
-//endpoint to fetch transaction history
+// Endpoint to log a transaction (monthly contribution or payout)
+router.post('/employee/log_transaction/', authentication.authenticate, employeeController.logTransaction);
+
+// Endpoint to fetch transaction history logged by this employee
 router.get('/employee/transactions/history/', authentication.authenticate, employeeController.getEmployeeTransactionHistory);
 
-//endpoint to get unread notification count
-router.get('/employee/notifications/unread-count', authentication.authenticate, employeeController.getUnreadNotificationCount);
 
-//endpoint to get unread notifications
-router.get('/employee/notifications', authentication.authenticate, employeeController.getNotifications);
+// ============================================================================
+// 4. CASH TRANSFERS (INTER-EMPLOYEE)
+// ============================================================================
 
-//endpoint to save push subscription object
-router.post('/employee/push-subscription', authentication.authenticate, employeeController.saveEmployeePushSubscription);
-
-// endpoint to fetch approved employees for the cash transfer dropdown
+// Endpoint to fetch approved employees for the cash transfer dropdown
 router.get('/employee/transfer-directory', authentication.authenticate, employeeController.getApprovedEmployeesForTransfer);
 
-//endpoint to initiate cash transfer between employees
+// Endpoint to initiate a cash transfer to another employee
 router.post('/employee/cash-transfer', authentication.authenticate, employeeController.initiateCashTransfer);
 
-//endpoint to confirm a cash transfer
+// Endpoint to confirm a received cash transfer
 router.patch('/employee/cash-transfer/:transferId/confirm', authentication.authenticate, employeeController.confirmCashTransfer);
 
-//endpoint to cancel a cash transfer
+// Endpoint to cancel an initiated cash transfer
 router.patch('/employee/cash-transfer/:transferId/cancel', authentication.authenticate, employeeController.cancelCashTransfer);
 
-//endpoint to get inter employee transfer history
+// Endpoint to get inter-employee transfer history
 router.get('/employee/cash-transfer/history', authentication.authenticate, employeeController.getCashTransferHistory);
+
+
+// ============================================================================
+// 5. NOTIFICATIONS & PUSH
+// ============================================================================
+
+// Endpoint to get unread notifications
+router.get('/employee/notifications', authentication.authenticate, employeeController.getNotifications);
+
+// Endpoint to get unread notification count
+router.get('/employee/notifications/unread-count', authentication.authenticate, employeeController.getUnreadNotificationCount);
+
+// Endpoint to save push subscription object for notifications
+router.post('/employee/push-subscription', authentication.authenticate, employeeController.saveEmployeePushSubscription);
 
 
 module.exports = router;
