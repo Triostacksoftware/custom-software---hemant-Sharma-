@@ -68,14 +68,20 @@ io.on("connection", (socket) => {
     });
 });
 
-mongoose.connect(process.env.DATABASE_CONNECTION_STRING)
-    .then(() => {
-        console.log("Database connection established");
-        server.listen(process.env.PORT, () => {
-            console.log(`Server running on port ${process.env.PORT}`);
-            initCronJobs(io);
+const connectWithRetry = () => {
+    console.log("Attempting MongoDB connection...");
+    mongoose.connect(process.env.DATABASE_CONNECTION_STRING)
+        .then(() => {
+            console.log("Database connection established");
+            server.listen(process.env.PORT, () => {
+                console.log(`Server running on port ${process.env.PORT}`);
+                initCronJobs(io);
+            });
+        })
+        .catch((error) => {
+            console.error("Database connection error, retrying in 5 seconds...", error);
+            setTimeout(connectWithRetry, 5000);
         });
-    })
-    .catch((error) => {
-        console.error("Database connection error", error);
-    });
+};
+
+connectWithRetry();
