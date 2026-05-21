@@ -24,20 +24,22 @@ const { initCronJobs } = require("./cronJobs");
 const app = express();
 const server = http.createServer(app);
 
+const clientUrls = process.env.CLIENT_URL ? process.env.CLIENT_URL.split(",") : [];
+
 const io = new Server(server, {
     cors: {
-        origin: process.env.CLIENT_URL,
+        origin: clientUrls,
         methods: ["GET", "POST"],
         credentials: true
     }
 });
 
-console.log("Client URL is:", process.env.CLIENT_URL);
+console.log("Client URLs are:", clientUrls);
 
 app.set("io", io);
 
 app.use(cors({
-    origin: process.env.CLIENT_URL,
+    origin: clientUrls,
     credentials: true
 }));
 app.use(express.json());

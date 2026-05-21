@@ -1,0 +1,55 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: chitfund-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: chitfund-server
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      - DATABASE_CONNECTION_STRING=${DATABASE_CONNECTION_STRING}
+      - PORT=${PORT}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_USERNAME=${DB_USERNAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_EMAIL=${VAPID_EMAIL}
+      - CLIENT_URL=${CLIENT_URL}
+    volumes:
+      - ./server:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - mongodb
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: chitfund-client
+    ports:
+      - "${CLIENT_PORT}:${CLIENT_PORT}"
+    environment:
+      - PORT=${CLIENT_PORT}
+      - REACT_APP_API_URL=${REACT_APP_API_URL}
+      - REACT_APP_ENVIRONMENT=${REACT_APP_ENVIRONMENT}
+      - REACT_APP_SOCKET_URL=${REACT_APP_SOCKET_URL}
+      - REACT_APP_VAPID_PUBLIC_KEY=${REACT_APP_VAPID_PUBLIC_KEY}
+    volumes:
+      - ./client:/usr/src/app
+      - /usr/src/app/node_modules
+    stdin_open: true
+    tty: true
+    depends_on:
+      - server
+
+volumes:
+  mongo-data:
