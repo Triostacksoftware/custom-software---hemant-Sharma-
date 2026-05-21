@@ -82,7 +82,11 @@ const BiddingRoom = () => {
                 }
 
                 // 2. Connect Socket
-                const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+                const socketUrl = process.env.REACT_APP_API_URL;
+                if (!socketUrl) {
+                    console.error('REACT_APP_API_URL is not set');
+                    return;
+                }
                 const newSocket = io(socketUrl);
 
                 newSocket.emit('joinBiddingRoom', { biddingRoundId: roundId });

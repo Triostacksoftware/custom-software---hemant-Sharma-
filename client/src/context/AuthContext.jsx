@@ -61,7 +61,11 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         if (user && user._id) {
             // 1. Establish Personal Socket Room Connection
-            const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+            const socketUrl = process.env.REACT_APP_API_URL;
+            if (!socketUrl) {
+                console.error('REACT_APP_API_URL is not set');
+                return;
+            }
             const socket = io(socketUrl);
 
             // Emit the join command based on your backend convention
