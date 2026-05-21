@@ -29,9 +29,18 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode, onRegistratio
             return false;
         }
 
-        if (formData.phoneNumber.length !== 10) {
-            setError('Please enter a valid 10-digit phone number');
-            return false;
+        if (role === 'admin') {
+            const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.phoneNumber);
+            const isPhone = /^\d{10}$/.test(formData.phoneNumber);
+            if (!isEmail && !isPhone) {
+                setError('Please enter a valid email address or 10-digit phone number');
+                return false;
+            }
+        } else {
+            if (formData.phoneNumber.length !== 10) {
+                setError('Please enter a valid 10-digit phone number');
+                return false;
+            }
         }
 
         if (formData.password.length < 6) {
@@ -137,18 +146,22 @@ const AuthModal = ({ role, mode, onClose, onSuccess, onSwitchMode, onRegistratio
                         )}
 
                         <div className="form-group">
-                            <label htmlFor="phoneNumber">Phone Number *</label>
+                            <label htmlFor="phoneNumber">
+                                {role === 'admin' ? 'Email or Phone Number *' : 'Phone Number *'}
+                            </label>
                             <input
-                                type="tel"
+                                type={role === 'admin' ? 'text' : 'tel'}
                                 id="phoneNumber"
                                 name="phoneNumber"
                                 value={formData.phoneNumber}
                                 onChange={handleInputChange}
-                                placeholder="Enter 10-digit phone number"
+                                placeholder={role === 'admin' ? 'Enter email or phone number' : 'Enter 10-digit phone number'}
                                 required
                                 disabled={loading}
-                                pattern="[0-9]{10}"
-                                maxLength="10"
+                                {...(role !== 'admin' ? {
+                                    pattern: "[0-9]{10}",
+                                    maxLength: "10"
+                                } : {})}
                             />
                         </div>
 
