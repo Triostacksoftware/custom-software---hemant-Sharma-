@@ -43,6 +43,8 @@ services:
       - REACT_APP_ENVIRONMENT=${REACT_APP_ENVIRONMENT}
       - REACT_APP_SOCKET_URL=${REACT_APP_SOCKET_URL}
       - REACT_APP_VAPID_PUBLIC_KEY=${REACT_APP_VAPID_PUBLIC_KEY}
+      - WDS_SOCKET_PORT=0
+
     volumes:
       - ./client:/usr/src/app
       - /usr/src/app/node_modules
